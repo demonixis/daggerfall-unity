@@ -210,6 +210,8 @@ namespace DaggerfallWorkshop.Game
 
         void OnGUI()
         {
+            OnGUIVR.Begin();
+
             // Store key downs for alternate input (e.g. text box input)
             // Possible to get multiple keydown events per frame, one with character, one with keycode
             // Only accept character or keycode if valid
@@ -230,6 +232,8 @@ namespace DaggerfallWorkshop.Game
             {
                 uiManager.TopWindow.Draw();
             }
+
+            OnGUIVR.End();
         }
 
         void ProcessMessages()

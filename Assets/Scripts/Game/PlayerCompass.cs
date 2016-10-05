@@ -62,7 +62,9 @@ namespace DaggerfallWorkshop.Game
             // Redraw compass
             if (Event.current.type.Equals(EventType.Repaint))
             {
+                OnGUIVR.Begin();
                 DrawCompass();
+                OnGUIVR.End();
             }
         }
 

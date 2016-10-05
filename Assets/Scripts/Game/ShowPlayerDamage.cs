@@ -38,6 +38,8 @@ namespace DaggerfallWorkshop.Game
 
         void OnGUI()
         {
+            OnGUIVR.Begin();
+
             if (fadingOut)
             {
                 alphaFadeValue -= fadeSpeed * Time.deltaTime;
@@ -52,6 +54,8 @@ namespace DaggerfallWorkshop.Game
                     fadingOut = false;
                 }
             }
+
+            OnGUIVR.End();
         }
     }
 }

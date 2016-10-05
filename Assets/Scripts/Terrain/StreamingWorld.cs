@@ -266,11 +266,13 @@ namespace DaggerfallWorkshop
         {
             if (Event.current.type.Equals(EventType.Repaint) && ShowDebugString)
             {
+                OnGUIVR.Begin();
                 GUIStyle style = new GUIStyle();
                 style.normal.textColor = Color.black;
                 string text = GetDebugString();
                 GUI.Label(new Rect(10, 30, 800, 24), text, style);
                 GUI.Label(new Rect(8, 28, 800, 24), text);
+                OnGUIVR.End();
             }
         }
 

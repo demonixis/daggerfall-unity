@@ -69,8 +69,10 @@ namespace DaggerfallWorkshop.Game
         {
             if (ShowTitle && TitleScreenTexture)
             {
+                OnGUIVR.Begin();
                 GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), blackTexture, ScaleMode.StretchToFill);
                 GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), TitleScreenTexture, ScaleMode.ScaleToFit, false, 1.6f);
+                OnGUIVR.End();
             }
         }
 

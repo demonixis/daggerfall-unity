@@ -146,11 +146,13 @@ namespace DaggerfallWorkshop.Game
         {
             if (Event.current.type.Equals(EventType.Repaint) && showDebugStrings && !Sheathed)
             {
+                OnGUIVR.Begin();
                 GUIStyle style = new GUIStyle();
                 style.normal.textColor = Color.black;
                 string text = GetDebugString();
                 GUI.Label(new Rect(4, 4, 800, 24), text, style);
                 GUI.Label(new Rect(2, 2, 800, 24), text);
+                OnGUIVR.End();
             }
         }
 

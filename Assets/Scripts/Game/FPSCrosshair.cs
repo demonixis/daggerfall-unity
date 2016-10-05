@@ -25,6 +25,8 @@ namespace DaggerfallWorkshop.Game
         {
             if (CrosshairTexture != null)
             {
+                OnGUIVR.Begin();
+
                 GUI.color = new Color(1, 1, 1, 0.75f);
                 GUI.DrawTexture(
                     new Rect((Screen.width * 0.5f) - (CrosshairTexture.width * 0.5f),
@@ -32,6 +34,8 @@ namespace DaggerfallWorkshop.Game
                         CrosshairTexture.width,
                         CrosshairTexture.height), CrosshairTexture);
                 GUI.color = Color.white;
+
+                OnGUIVR.End();
             }
         }
     }

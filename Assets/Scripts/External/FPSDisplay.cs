@@ -32,6 +32,8 @@ public class FPSDisplay : MonoBehaviour
         if (!ShowDebugString)
             return;
 
+        OnGUIVR.Begin();
+
         int w = Screen.width, h = Screen.height;
 
         GUIStyle style = new GUIStyle();
@@ -44,5 +46,7 @@ public class FPSDisplay : MonoBehaviour
         float fps = 1.0f / deltaTime;
         string text = string.Format("{0:0.0} ms ({1:0.} fps)", msec, fps);
         GUI.Label(rect, text, style);
+
+        OnGUIVR.End();
     }
 }

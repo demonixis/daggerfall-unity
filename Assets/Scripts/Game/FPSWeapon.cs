@@ -72,6 +72,8 @@ namespace DaggerfallWorkshop.Game
             if (!ReadyCheck() || WeaponType == WeaponTypes.None || GameManager.IsGamePaused)
                 return;
 
+            OnGUIVR.Begin();
+
             // Must have current weapon texture atlas
             if (weaponAtlas == null || WeaponType != currentWeaponType || MetalType != currentMetalType)
             {
@@ -88,6 +90,8 @@ namespace DaggerfallWorkshop.Game
                 GUI.depth = 1;
                 GUI.DrawTextureWithTexCoords(weaponPosition, weaponAtlas, curAnimRect);
             }
+
+            OnGUIVR.End();
         }
 
         public void OnAttackDirection(WeaponManager.MouseDirections direction)

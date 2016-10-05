@@ -59,11 +59,13 @@ namespace DaggerfallWorkshop
         {
             if (Event.current.type.Equals(EventType.Repaint) && ShowDebugString)
             {
+                OnGUIVR.Begin();
                 GUIStyle style = new GUIStyle();
                 style.normal.textColor = Color.black;
                 string text = DaggerfallDateTime.LongDateTimeString();
                 GUI.Label(new Rect(10, 10, 500, 24), text, style);
                 GUI.Label(new Rect(8, 8, 500, 24), text);
+                OnGUIVR.End();
             }
         }
 
