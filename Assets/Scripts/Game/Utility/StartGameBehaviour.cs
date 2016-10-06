@@ -159,7 +159,7 @@ namespace DaggerfallWorkshop.Game.Utility
             {
                 // Set camera FOV
                 Camera camera = cameraObject.GetComponent<Camera>();
-                if (camera)
+                if (camera && !PlayerVR.VREnabled)
                     camera.fieldOfView = DaggerfallUnity.Settings.FieldOfView;
 
                 // Set mouse look

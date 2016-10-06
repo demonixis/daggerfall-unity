@@ -8,7 +8,6 @@
 // 
 // Notes:
 //
-
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
@@ -23,7 +22,7 @@ public class OnGUIVR : MonoBehaviour
     [SerializeField]
     private Texture2D _cursor = null;
 
-    IEnumerator Start()
+    void Start()
     {
         vrEnabled = VRSettings.enabled;
 
@@ -38,7 +37,7 @@ public class OnGUIVR : MonoBehaviour
 
             var canvasGO = new GameObject("VRCanvas");
             var canvasTransform = canvasGO.AddComponent<RectTransform>();
-            canvasTransform.SetParent(camera.transform.parent);
+            canvasTransform.SetParent(camera.transform);
             canvasTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, width);
             canvasTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, height);
             canvasTransform.localPosition = new Vector3(0.0f, 0.0f, 1.0f);
@@ -59,9 +58,7 @@ public class OnGUIVR : MonoBehaviour
             var rawImage = rawImageGO.AddComponent<RawImage>();
             rawImage.texture = renderTexture;
 
-            yield return new WaitForSeconds(0.5f);
-
-            canvasTransform.localPosition = new Vector3(0.0f, Camera.main.transform.localPosition.y, canvasTransform.localPosition.z);
+            StartCoroutine(ClearRenderTexture());
         }
 
         instance = this;
@@ -72,6 +69,17 @@ public class OnGUIVR : MonoBehaviour
         Begin();
         GUI.DrawTexture(new Rect(Event.current.mousePosition.x, Event.current.mousePosition.y, _cursor.width, _cursor.height), _cursor);
         End();
+    }
+
+    private IEnumerator ClearRenderTexture()
+    {
+        while(true)
+        {
+            RenderTexture.active = renderTexture;
+            //GL.Clear(true, true, new Color(1, 1, 1, 0));
+            RenderTexture.active = null;
+            yield return new WaitForEndOfFrame();
+        }
     }
 
     public static void Begin()

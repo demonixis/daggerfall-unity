@@ -16,6 +16,11 @@ namespace DaggerfallWorkshop.Game
 {
     public class PlayerVR : MonoBehaviour
     {
+        public static bool VREnabled
+        {
+            get { return VRSettings.enabled; }
+        }
+
         void Start()
         {
             if (VRSettings.enabled)
@@ -27,6 +32,10 @@ namespace DaggerfallWorkshop.Game
                 var fogEffect = camera.GetComponent<UnityStandardAssets.ImageEffects.GlobalFog>();
                 if (fogEffect != null)
                     fogEffect.enabled = false;
+
+                var mouseLook = camera.GetComponent<PlayerMouseLook>();
+                if (mouseLook != null)
+                    mouseLook.sensitivity = new Vector2(mouseLook.sensitivity.x, 0.0f);
             }
             else
                 Destroy(this);
