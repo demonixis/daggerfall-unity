@@ -260,7 +260,7 @@ namespace DaggerfallWorkshop.Game
             target.WeaponType = WeaponTypes.Melee;
             target.MetalType = MetalTypes.None;
             target.DrawWeaponSound = SoundClips.None;
-            target.SwingWeaponSound = SoundClips.PlayerSwing;
+            target.SwingWeaponSound = SoundClips.SwingHighPitch;
 
             // TODO: Adjust FPSWeapon attack speed scale for swing pitch variance
         }
@@ -274,8 +274,8 @@ namespace DaggerfallWorkshop.Game
             // Setup target
             target.WeaponType = DaggerfallUnity.Instance.ItemHelper.ConvertItemToAPIWeaponType(weapon);
             target.MetalType = DaggerfallUnity.Instance.ItemHelper.ConvertItemMaterialToAPIMetalType(weapon);
-            target.DrawWeaponSound = SoundClips.DrawWeapon;
-            target.SwingWeaponSound = SoundClips.PlayerSwing;
+            target.DrawWeaponSound = weapon.GetEquipSound();
+            target.SwingWeaponSound = weapon.GetSwingSound();
 
             // TODO: Adjust FPSWeapon attack speed scale for swing pitch variance
         }

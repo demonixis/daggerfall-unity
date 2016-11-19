@@ -331,17 +331,33 @@ namespace DaggerfallWorkshop.Game.Items
         public void NextVariant()
         {
             // Only certain items support user-initiated variants
-            // This list will expand as more supported items are discovered
             bool canChangeVariant = false;
             switch(TemplateIndex)
-            {
-                case (int)MensClothing.Plain_robes:
-                case (int)MensClothing.Formal_cloak:
+            {        
                 case (int)MensClothing.Casual_cloak:
+                case (int)MensClothing.Formal_cloak:
                 case (int)MensClothing.Reversible_tunic:
-                case (int)WomensClothing.Plain_robes:
-                case (int)WomensClothing.Formal_cloak:
+                case (int)MensClothing.Plain_robes:
+                case (int)MensClothing.Short_shirt:
+                case (int)MensClothing.Short_shirt_with_belt:
+                case (int)MensClothing.Long_shirt:
+                case (int)MensClothing.Long_shirt_with_belt:
+                case (int)MensClothing.Short_shirt_closed_top:
+                case (int)MensClothing.Short_shirt_closed_top2:
+                case (int)MensClothing.Long_shirt_closed_top:
+                case (int)MensClothing.Long_shirt_closed_top2:
                 case (int)WomensClothing.Casual_cloak:
+                case (int)WomensClothing.Formal_cloak:
+                case (int)WomensClothing.Strapless_dress:
+                case (int)WomensClothing.Plain_robes:
+                case (int)WomensClothing.Short_shirt:
+                case (int)WomensClothing.Short_shirt_belt:
+                case (int)WomensClothing.Long_shirt:
+                case (int)WomensClothing.Long_shirt_belt:
+                case (int)WomensClothing.Short_shirt_closed:
+                case (int)WomensClothing.Short_shirt_closed_belt:
+                case (int)WomensClothing.Long_shirt_closed:
+                case (int)WomensClothing.Long_shirt_closed_belt:               
                     canChangeVariant = true;
                     break;
             }
@@ -388,6 +404,92 @@ namespace DaggerfallWorkshop.Game.Items
             data.currentVariant = currentVariant;
 
             return data;
+        }
+
+        public SoundClips GetEquipSound()
+        {
+            switch (itemGroup)
+            {
+                case ItemGroups.MensClothing:
+                case ItemGroups.WomensClothing:
+                    return SoundClips.EquipClothing;
+                case ItemGroups.Jewellery:
+                case ItemGroups.Gems:
+                    return SoundClips.EquipJewellery;
+                case ItemGroups.Armor:
+                    if (GetIsShield() || TemplateIndex == (int)Armor.Helm)
+                        return SoundClips.EquipPlate;
+                    else if (nativeMaterialValue == (int)ArmorMaterialTypes.Leather)
+                        return SoundClips.EquipLeather;
+                    else if (nativeMaterialValue == (int)ArmorMaterialTypes.Chain)
+                        return SoundClips.EquipChain;
+                    else
+                        return SoundClips.EquipPlate;
+                case ItemGroups.Weapons:
+                    switch (TemplateIndex)
+                    {
+                        case (int)Weapons.Battle_Axe:
+                        case (int)Weapons.War_Axe:
+                            return SoundClips.EquipAxe;
+                        case (int)Weapons.Broadsword:
+                        case (int)Weapons.Longsword:
+                        case (int)Weapons.Saber:
+                        case (int)Weapons.Katana:
+                            return SoundClips.EquipLongBlade;
+                        case (int)Weapons.Claymore:
+                        case (int)Weapons.Dai_Katana:
+                            return SoundClips.EquipTwoHandedBlade;
+                        case (int)Weapons.Dagger:
+                        case (int)Weapons.Tanto:
+                        case (int)Weapons.Wakazashi:
+                        case (int)Weapons.Shortsword:
+                            return SoundClips.EquipShortBlade;
+                        case (int)Weapons.Flail:
+                            return SoundClips.EquipFlail;
+                        case (int)Weapons.Mace:
+                        case (int)Weapons.Warhammer:
+                            return SoundClips.EquipMaceOrHammer;
+                        case (int)Weapons.Staff:
+                            return SoundClips.EquipStaff;
+                        case (int)Weapons.Short_Bow:
+                        case (int)Weapons.Long_Bow:
+                            return SoundClips.EquipBow;
+
+                        default:
+                            return SoundClips.None;
+                    }
+
+                default:
+                    return SoundClips.None;
+            }
+        }
+
+        public SoundClips GetSwingSound()
+        {
+            switch (TemplateIndex)
+            {
+                case (int)Weapons.Warhammer:
+                case (int)Weapons.Battle_Axe:
+                case (int)Weapons.Katana:
+                case (int)Weapons.Claymore:
+                case (int)Weapons.Dai_Katana:
+                case (int)Weapons.Flail:
+                    return SoundClips.SwingLowPitch;
+                case (int)Weapons.Broadsword:
+                case (int)Weapons.Longsword:
+                case (int)Weapons.Saber:
+                case (int)Weapons.Wakazashi:
+                case (int)Weapons.War_Axe:
+                case (int)Weapons.Staff:
+                    return SoundClips.SwingMediumPitch;
+                case (int)Weapons.Dagger:
+                case (int)Weapons.Tanto:                
+                case (int)Weapons.Shortsword:
+                    return SoundClips.SwingHighPitch;
+
+                default:
+                    return SoundClips.None;
+            }
         }
 
         #endregion
@@ -664,7 +766,8 @@ namespace DaggerfallWorkshop.Game.Items
             {
                 if (TemplateIndex == (int)Armor.Kite_Shield ||
                     TemplateIndex == (int)Armor.Round_Shield ||
-                    TemplateIndex == (int)Armor.Tower_Shield)
+                    TemplateIndex == (int)Armor.Tower_Shield ||
+                    TemplateIndex == (int)Armor.Buckler)
                 {
                     return true;
                 }
