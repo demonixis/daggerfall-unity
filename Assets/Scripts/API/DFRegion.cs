@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -11,7 +11,6 @@
 
 #region Using Statements
 using System;
-using System.Text;
 using System.Collections.Generic;
 #endregion
 
@@ -66,43 +65,38 @@ namespace DaggerfallConnect
         /// </summary>
         public enum LocationTypes
         {
-            /// <summary>Large dungeon.</summary>
-            DungeonLabyrinth = 132,
-            /// <summary>Medium dungeon.</summary>
-            DungeonKeep = 135,
-            /// <summary>Small dungeon.</summary>
-            DungeonRuin = 138,
-
-            /// <summary>Graveyard visible.</summary>
-            GraveyardCommon = 172,
-            /// <summary>Graveyard hidden.</summary>
-            GraveyardForgotten = 140,
-
-            /// <summary>Farmhouse.</summary>
-            HomeFarms = 163,
-            /// <summary>Wealthy home.</summary>
-            HomeWealthy = 168,
-            /// <summary>Poor home.</summary>
-            HomePoor = 171,
-            /// <summary>Player ship.</summary>
-            HomeYourShips = 174,
-
-            /// <summary>Tavern</summary>
-            Tavern = 166,
-
-            /// <summary>Temple.</summary>
-            ReligionTemple = 165,
-            /// <summary>Cult.</summary>
-            ReligionCult = 169,
-            /// <summary>Coven.</summary>
-            ReligionCoven = 141,
-
             /// <summary>Large settlement.</summary>
-            TownCity = 160,
+            TownCity = 0,
             /// <summary>Medium settlement.</summary>
-            TownHamlet = 161,
+            TownHamlet = 1,
             /// <summary>Small settlement.</summary>
-            TownVillage = 162,
+            TownVillage = 2,
+            /// <summary>Farmhouse.</summary>
+            HomeFarms = 3,
+            /// <summary>Large dungeon.</summary>
+            DungeonLabyrinth = 4,
+            /// <summary>Temple.</summary>
+            ReligionTemple = 5,
+            /// <summary>Tavern</summary>
+            Tavern = 6,
+            /// <summary>Medium dungeon.</summary>
+            DungeonKeep = 7,
+            /// <summary>Wealthy home.</summary>
+            HomeWealthy = 8,
+            /// <summary>Cult.</summary>
+            ReligionCult = 9,
+            /// <summary>Small dungeon.</summary>
+            DungeonRuin = 10,
+            /// <summary>Poor home.</summary>
+            HomePoor = 11,
+            /// <summary>Graveyard.</summary>
+            Graveyard = 12,
+            /// <summary>Coven.</summary>
+            Coven = 13,
+            /// <summary>Player ship.</summary>
+            HomeYourShips = 14,
+            /// <summary>No location type.</summary>
+            None = 0xffff,
         }
 
         /// <summary>
@@ -116,7 +110,7 @@ namespace DaggerfallConnect
             /// <summary>HouseForSale</summary>
             HouseForSale = 0x01,
             /// <summary>Amorer</summary>
-            Amorer = 0x02,
+            Armorer = 0x02,
             /// <summary>Bank</summary>
             Bank = 0x03,
             /// <summary>Town4</summary>
@@ -173,37 +167,35 @@ namespace DaggerfallConnect
 
         /// <summary>
         /// Describes dungeon types based on Daggerfall Chronicles.
-        /// (value >> 8) = index of type.
         /// </summary>
         public enum DungeonTypes
         {
-            Crypt = 51,
-            OrcStronghold = 307,
-            HumanStronghold = 563,
-            Palace = 648,               // Palace also >> 8 to index 2 (HumanStronghold)
-            Prison = 819,
-            DesecratedTemple = 1075,
-            Mine = 1331,
-            NaturalCave = 1587,
-            Coven = 1843,
-            VampireHaunt = 2099,
-            Laboratory = 2355,
-            HarpyNest = 2611,
-            RuinedCastle = 2867,
-            SpiderNest = 3123,
-            GiantStronghold = 3379,
-            DragonsDen = 3635,
-            BarbarianStronghold = 3891,
-            VolcanicCaves = 4147,
-            ScorpionNest = 4403,
-            Cemetery = 4659,
-            NoDungeon = 65399,
+            Crypt = 0,
+            OrcStronghold = 1,
+            HumanStronghold = 2,
+            Prison = 3,
+            DesecratedTemple = 4,
+            Mine = 5,
+            NaturalCave = 6,
+            Coven = 7,
+            VampireHaunt = 8,
+            Laboratory = 9,
+            HarpyNest = 10,
+            RuinedCastle = 11,
+            SpiderNest = 12,
+            GiantStronghold = 13,
+            DragonsDen = 14,
+            BarbarianStronghold = 15,
+            VolcanicCaves = 16,
+            ScorpionNest = 17,
+            Cemetery = 18,
+            NoDungeon = 255,
         }
 
         /// <summary>
         /// String array of dungeon types for display.
         /// </summary>
-        public static string[] DungeonTypeNames = new string[]
+        public static string[] DungeonTypeNames =
         {
             "Crypt",
             "Orc Stronghold",
@@ -234,26 +226,23 @@ namespace DaggerfallConnect
             /// <summary>Numeric ID of this location.</summary>
             public Int32 MapId;
 
-            /// <summary>Unknown.</summary>
-            public Byte Unknown1;
-
-            /// <summary>Longitude and Type compressed into a bitfield.</summary>
-            public UInt32 LongitudeTypeBitfield;
+            /// <summary>Latitude of this location.</summary>
+            public Int32 Latitude;
 
             /// <summary>Longitude value read from bitfield.</summary>
-            public UInt32 Longitude;
+            public Int32 Longitude;
 
-            /// <summary>Locaton type value read from bitfield.</summary>
+            /// <summary>Location type value read from bitfield.</summary>
             public LocationTypes LocationType;
-
-            /// <summary>Latitude of this location.</summary>
-            public UInt16 Latitude;
 
             /// <summary>Dungeon type (Crypt, Orc Stronghold, Human Stronghold, etc.).</summary>
             public DungeonTypes DungeonType;
 
-            /// <summary>Unknown.</summary>
-            public UInt32 Unknown3;
+            /// <summary>Whether or not this location is discovered.</summary>
+            public Boolean Discovered;
+
+            /// <summary>A key for the contents of the location.</summary>
+            public UInt32 Key;
         }
 
         #endregion

@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -9,12 +9,8 @@
 // Notes:
 //
 
-using System;
 using System.Collections.Generic;
-using UnityEngine;
 using DaggerfallConnect;
-using DaggerfallWorkshop.Game.Entity;
-using DaggerfallWorkshop.Game.Effects;
 
 namespace DaggerfallWorkshop.Game.Entity
 {
@@ -24,6 +20,8 @@ namespace DaggerfallWorkshop.Game.Entity
     /// </summary>
     public class RaceTemplate
     {
+        protected const string textDatabase = "Races";
+
         public int ID;                                          // A unique id for this race. Default race IDs match colour picker index on TAMRIEL2.IMG
         public string Name;                                     // Name of this race in singular, e.g. "Dark Elf"
         public int DescriptionID;                               // TEXT.RSC ID text to display on race selection
@@ -44,6 +42,33 @@ namespace DaggerfallWorkshop.Game.Entity
         public DFCareer.EffectFlags LowToleranceFlags;          // Racial low tolerance
         public DFCareer.EffectFlags CriticalWeaknessFlags;      // Racial critical weakness
         public DFCareer.SpecialAbilityFlags SpecialAbilities;   // Racial special abilities
+
+        /// <summary>
+        /// Clones this race template.
+        /// </summary>
+        /// <returns>Cloned RaceTemplate reference.</returns>
+        public RaceTemplate Clone()
+        {
+            RaceTemplate clone = new RaceTemplate();
+            clone.ID = ID;
+            clone.Name = Name;
+            clone.DescriptionID = DescriptionID;
+            clone.ClipID = ClipID;
+            clone.PaperDollBackground = PaperDollBackground;
+            clone.PaperDollBodyMaleUnclothed = PaperDollBodyMaleUnclothed;
+            clone.PaperDollBodyMaleClothed = PaperDollBodyMaleClothed;
+            clone.PaperDollBodyFemaleUnclothed = PaperDollBodyFemaleUnclothed;
+            clone.PaperDollBodyFemaleClothed = PaperDollBodyFemaleClothed;
+            clone.PaperDollHeadsMale = PaperDollHeadsMale;
+            clone.PaperDollHeadsFemale = PaperDollHeadsFemale;
+            clone.ResistanceFlags = ResistanceFlags;
+            clone.ImmunityFlags = ImmunityFlags;
+            clone.LowToleranceFlags = LowToleranceFlags;
+            clone.CriticalWeaknessFlags = CriticalWeaknessFlags;
+            clone.SpecialAbilities = SpecialAbilities;
+
+            return clone;
+        }
 
         /// <summary>
         /// Populates a race dictionary with standard RaceTemplate definitions.
@@ -85,7 +110,7 @@ namespace DaggerfallWorkshop.Game.Entity
         public Breton()
         {
             ID = (int)Races.Breton;
-            Name = "Breton";
+            Name = TextManager.Instance.GetText(textDatabase, "breton");
             DescriptionID = 2003;
             ClipID = 209;
 
@@ -106,7 +131,7 @@ namespace DaggerfallWorkshop.Game.Entity
         public Redguard()
         {
             ID = (int)Races.Redguard;
-            Name = "Redguard";
+            Name = TextManager.Instance.GetText(textDatabase, "redguard");
             DescriptionID = 2002;
             ClipID = 210;
 
@@ -127,7 +152,7 @@ namespace DaggerfallWorkshop.Game.Entity
         public Nord()
         {
             ID = (int)Races.Nord;
-            Name = "Nord";
+            Name = TextManager.Instance.GetText(textDatabase, "nord");
             DescriptionID = 2000;
             ClipID = 211;
 
@@ -150,7 +175,7 @@ namespace DaggerfallWorkshop.Game.Entity
         public DarkElf()
         {
             ID = (int)Races.DarkElf;
-            Name = "Dark Elf";
+            Name = TextManager.Instance.GetText(textDatabase, "darkElf");
             DescriptionID = 2007;
             ClipID = 212;
 
@@ -171,7 +196,7 @@ namespace DaggerfallWorkshop.Game.Entity
         public HighElf()
         {
             ID = (int)Races.HighElf;
-            Name = "High Elf";
+            Name = TextManager.Instance.GetText(textDatabase, "highElf");
             DescriptionID = 2006;
             ClipID = 213;
 
@@ -194,7 +219,7 @@ namespace DaggerfallWorkshop.Game.Entity
         public WoodElf()
         {
             ID = (int)Races.WoodElf;
-            Name = "Wood Elf";
+            Name = TextManager.Instance.GetText(textDatabase, "woodElf");
             DescriptionID = 2005;
             ClipID = 214;
 
@@ -215,7 +240,7 @@ namespace DaggerfallWorkshop.Game.Entity
         public Khajiit()
         {
             ID = (int)Races.Khajiit;
-            Name = "Khajiit";
+            Name = TextManager.Instance.GetText(textDatabase, "khajiit");
             DescriptionID = 2001;
             ClipID = 215;
 
@@ -236,7 +261,7 @@ namespace DaggerfallWorkshop.Game.Entity
         public Argonian()
         {
             ID = (int)Races.Argonian;
-            Name = "Argonian";
+            Name = TextManager.Instance.GetText(textDatabase, "argonian");
             DescriptionID = 2004;
             ClipID = 216;
 

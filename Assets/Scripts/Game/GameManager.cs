@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -22,6 +22,9 @@ using DaggerfallWorkshop.Game.Utility;
 using DaggerfallWorkshop.Game.Entity;
 using DaggerfallWorkshop.Game.Items;
 using DaggerfallWorkshop.Utility;
+using DaggerfallWorkshop.Game.Questing;
+using DaggerfallWorkshop.Game.Guilds;
+using DaggerfallWorkshop.Game.MagicAndEffects;
 
 namespace DaggerfallWorkshop.Game
 {
@@ -31,19 +34,25 @@ namespace DaggerfallWorkshop.Game
     public class GameManager : MonoBehaviour
     {
         #region Fields
+        public const float classicUpdateInterval = 0.0625f;        // Update every 1/16 of a second. An approximation of classic's update loop, which varies with framerate.
 
         public bool Verbose = false;
         bool isGamePaused = false;
         float savedTimeScale;
+        float classicUpdateTimer = 0;                       // Timer for matching classic's update loop
+        bool classicUpdate = false;                         // True when reached a classic update
         //Texture2D pauseScreenshot;
 
         GameObject playerObject = null;
         Camera mainCamera = null;
         PlayerMouseLook playerMouseLook = null;
         PlayerHealth playerHealth = null;
+        VitalsChangeDetector vitalsChangeDetector = null;
         StartGameBehaviour startGameBehaviour = null;
         PlayerEntity playerEntity = null;
         DaggerfallEntityBehaviour playerEntityBehaviour = null;
+        EntityEffectBroker entityEffectBroker = null;
+        EntityEffectManager playerEffectManager = null;
         PlayerDeath playerDeath = null;
         PlayerGPS playerGPS  = null;
         PlayerEnterExit playerEnterExit = null;
@@ -58,14 +67,26 @@ namespace DaggerfallWorkshop.Game
         GameObject streamingTarget = null;
         SaveLoadManager saveLoadManager = null;
         PlayerMotor playerMotor = null;
+        AcrobatMotor acrobatMotor = null;
+        ClimbingMotor climbingMotor = null;
+        PlayerSpeedChanger speedChanger = null;
+        FrictionMotor frictionMotor = null;
         FloatingOrigin floatingOrigin = null;
         FPSWeapon[] playerWeapons = new FPSWeapon[2];
+        FPSSpellCasting playerSpellCasting = null;
         PlayerActivate playerActivate = null;
         CharacterController playerController = null;
         SunlightManager sunlightManager = null;
         ItemHelper itemHelper = null;
         StateManager stateManager = null;
-        DaggerfallAutomap automap = null;
+        Automap interiorAutomap = null;
+        ExteriorAutomap exteriorAutomap = null;
+        QuestMachine questMachine = null;
+		TransportManager transportManager = null;
+        TalkManager talkManager = null;
+        GuildManager guildManager = null;
+        QuestListsManager questListsManager = null;
+
         #endregion
 
         #region Properties
@@ -76,6 +97,13 @@ namespace DaggerfallWorkshop.Game
         {
             get { return Instance.isGamePaused; }
         }
+
+        public static bool ClassicUpdate
+        {
+            get { return Instance.classicUpdate; }
+        }
+
+        public bool DisableAI { get; set; }
 
         public StateManager StateManager
         {
@@ -107,6 +135,12 @@ namespace DaggerfallWorkshop.Game
             set { playerHealth = value; }
         }
 
+        public VitalsChangeDetector VitalsChangeDetector
+        {
+            get { return (vitalsChangeDetector) ? vitalsChangeDetector : vitalsChangeDetector = GetComponentFromObject<VitalsChangeDetector>(PlayerObject, "Player"); }
+            set { vitalsChangeDetector = value; }
+        }
+
         public StartGameBehaviour StartGameBehaviour
         {
             get { return (startGameBehaviour) ? startGameBehaviour : startGameBehaviour = GetMonoBehaviour<StartGameBehaviour>(); }
@@ -123,6 +157,18 @@ namespace DaggerfallWorkshop.Game
         {
             get { return (playerEntityBehaviour != null) ? playerEntityBehaviour : playerEntityBehaviour = GetComponentFromObject<DaggerfallEntityBehaviour>(PlayerObject); }
             set { playerEntityBehaviour = value; }
+        }
+
+        public EntityEffectManager PlayerEffectManager
+        {
+            get { return (playerEffectManager != null) ? playerEffectManager : playerEffectManager = GetComponentFromObject<EntityEffectManager>(PlayerObject); }
+            set { playerEffectManager = value; }
+        }
+
+        public EntityEffectBroker EntityEffectBroker
+        {
+            get { return (entityEffectBroker != null) ? entityEffectBroker : entityEffectBroker = GetMonoBehaviour<EntityEffectBroker>(); }
+            set { entityEffectBroker = value; }
         }
 
         public PlayerDeath PlayerDeath
@@ -201,11 +247,35 @@ namespace DaggerfallWorkshop.Game
             get { return (saveLoadManager) ? saveLoadManager : saveLoadManager = GetMonoBehaviour<SaveLoadManager>(); }
             set { saveLoadManager = value; }
         }
+        
+        public PlayerSpeedChanger SpeedChanger
+        {
+            get { return (speedChanger) ? speedChanger : speedChanger = GetComponentFromObject<PlayerSpeedChanger>(PlayerObject); }
+                set { speedChanger = value; }
+        }
 
         public PlayerMotor PlayerMotor
         {
             get { return (playerMotor) ? playerMotor : playerMotor = GetComponentFromObject<PlayerMotor>(PlayerObject); }
             set { playerMotor = value; }
+        }
+
+        public AcrobatMotor AcrobatMotor
+        {
+            get { return (acrobatMotor) ? acrobatMotor : acrobatMotor = GetComponentFromObject<AcrobatMotor>(PlayerObject); }
+            set { acrobatMotor = value; }
+        }
+
+        public ClimbingMotor ClimbingMotor
+        {
+            get { return (climbingMotor) ? climbingMotor : climbingMotor = GetComponentFromObject<ClimbingMotor>(PlayerObject); }
+            set { climbingMotor = value; }
+        }
+
+        public FrictionMotor FrictionMotor
+        {
+            get { return (frictionMotor) ? frictionMotor : frictionMotor = GetComponentFromObject<FrictionMotor>(PlayerObject); }
+            set { frictionMotor = value; }
         }
 
         public FloatingOrigin FloatingOrigin
@@ -224,6 +294,12 @@ namespace DaggerfallWorkshop.Game
         {
             get { return (playerWeapons[1]) ? playerWeapons[1] : playerWeapons[1] = GetComponentFromObject<FPSWeapon>(GetGameObjectWithName("Right Hand Weapon")); }
             set { playerWeapons[1] = value; }
+        }
+
+        public FPSSpellCasting PlayerSpellCasting
+        {
+            get { return (playerSpellCasting) ? playerSpellCasting : playerSpellCasting = GetComponentFromObject<FPSSpellCasting>(PlayerObject); }
+            set { playerSpellCasting = value; }
         }
 
         public PlayerActivate PlayerActivate
@@ -250,10 +326,46 @@ namespace DaggerfallWorkshop.Game
             set { itemHelper = value; }
         }
 
-        public DaggerfallAutomap Automap
+        public Automap InteriorAutomap
         {
-            get { return (automap != null) ? automap : automap = GetComponentFromObject<DaggerfallAutomap>(GetGameObjectWithName("Automap")); }
-            set { automap = value; }
+            get { return (interiorAutomap != null) ? interiorAutomap : interiorAutomap = GetComponentFromObject<Automap>(GetGameObjectWithName("InteriorAutomap")); }
+            set { interiorAutomap = value; }
+        }
+
+        public ExteriorAutomap ExteriorAutomap
+        {
+            get { return (exteriorAutomap != null) ? exteriorAutomap : exteriorAutomap = GetComponentFromObject<ExteriorAutomap>(GetGameObjectWithName("ExteriorAutomap")); }
+            set { exteriorAutomap = value; }
+        }
+
+        public QuestMachine QuestMachine
+        {
+            get { return (questMachine) ? questMachine : questMachine = GetMonoBehaviour<QuestMachine>(); }
+            set { questMachine = value; }
+        }
+
+        public TransportManager TransportManager
+        {
+            get { return (transportManager) ? transportManager : transportManager = GetComponentFromObject<TransportManager>(PlayerObject); }
+            set { transportManager = value; }
+        }
+
+        public TalkManager TalkManager
+        {
+            get { return (talkManager) ? talkManager : talkManager = GetComponentFromObject<TalkManager>(GetGameObjectWithName("TalkManager")); }
+            set { talkManager = value; }
+        }
+
+        public GuildManager GuildManager
+        {
+            get { return (guildManager != null) ? guildManager : guildManager = new GuildManager(); }
+            set { guildManager = value; }
+        }
+
+        public QuestListsManager QuestListsManager
+        {
+            get { return (questListsManager != null) ? questListsManager : questListsManager = new QuestListsManager(); }
+            set { questListsManager = value; }
         }
 
         public bool IsPlayerOnHUD
@@ -276,9 +388,9 @@ namespace DaggerfallWorkshop.Game
             get { return PlayerEnterExit.IsPlayerInsideBuilding; }
         }
 
-        public bool IsPlayerInsidePalace
+        public bool IsPlayerInsideCastle
         {
-            get { return PlayerEnterExit.IsPlayerInsideDungeonPalace; }
+            get { return PlayerEnterExit.IsPlayerInsideDungeonCastle; }
         }
 
         #endregion
@@ -327,7 +439,10 @@ namespace DaggerfallWorkshop.Game
         void Start()
         {
             // Try to set all properties at startup
-            GetProperties();
+            //GetProperties();
+
+            // Always start game paused
+            PauseGame(true);
 
             // Log welcome message
             Debug.Log("Welcome to Daggerfall Unity " + VersionInfo.DaggerfallUnityVersion);
@@ -336,7 +451,20 @@ namespace DaggerfallWorkshop.Game
         void Update()
         {
             if (!IsPlayingGame())
+            {
+                classicUpdate = false;
                 return;
+            }
+
+            // Update timer that approximates the timing of original Daggerfall's game update loop
+            classicUpdateTimer += Time.deltaTime;
+            if (classicUpdateTimer >= classicUpdateInterval)
+            {
+                classicUpdateTimer = 0;
+                classicUpdate = true;
+            }
+            else
+                classicUpdate = false;
 
             // Post message to open options dialog on escape during gameplay
             if (Input.GetKeyDown(KeyCode.Escape))
@@ -345,15 +473,15 @@ namespace DaggerfallWorkshop.Game
             }
 
             // Handle in-game windows
-            if (InputManager.Instance.ActionStarted(InputManager.Actions.CharacterSheet))
+            if (InputManager.Instance.ActionComplete(InputManager.Actions.CharacterSheet))
             {
                 DaggerfallUI.PostMessage(DaggerfallUIMessages.dfuiOpenCharacterSheetWindow);
             }
-            else if (InputManager.Instance.ActionStarted(InputManager.Actions.Inventory))
+            else if (InputManager.Instance.ActionComplete(InputManager.Actions.Inventory))
             {
                 DaggerfallUI.PostMessage(DaggerfallUIMessages.dfuiOpenInventoryWindow);
             }
-            else if (InputManager.Instance.ActionStarted(InputManager.Actions.TravelMap))
+            else if (InputManager.Instance.ActionComplete(InputManager.Actions.TravelMap))
             {
                 DaggerfallUI.PostMessage(DaggerfallUIMessages.dfuiOpenTravelMapWindow);
             }
@@ -361,8 +489,33 @@ namespace DaggerfallWorkshop.Game
             {
                 DaggerfallUI.PostMessage(DaggerfallUIMessages.dfuiOpenRestWindow);
             }
+            else if (InputManager.Instance.ActionComplete(InputManager.Actions.Transport))
+            {
+	            DaggerfallUI.PostMessage(DaggerfallUIMessages.dfuiOpenTransportWindow);
+            }
+            else if (InputManager.Instance.ActionComplete(InputManager.Actions.LogBook))
+            {
+                DaggerfallUI.PostMessage(DaggerfallUIMessages.dfuiOpenQuestJournalWindow);
+            }
+            else if (InputManager.Instance.ActionComplete(InputManager.Actions.NoteBook))
+            {
+                DaggerfallUI.PostMessage(DaggerfallUIMessages.dfuiOpenNotebookWindow);
+            }
+            else if (InputManager.Instance.ActionComplete(InputManager.Actions.CastSpell))
+            {
+                DaggerfallUI.PostMessage(DaggerfallUIMessages.dfuiOpenSpellBookWindow);
+            }
+            else if (InputManager.Instance.ActionComplete(InputManager.Actions.UseMagicItem))
+            {
+                DaggerfallUI.PostMessage(DaggerfallUIMessages.dfuiOpenUseMagicItemWindow);
+            }
 
-            if (InputManager.Instance.ActionStarted(InputManager.Actions.AutoMap))
+            if (InputManager.Instance.ActionComplete(InputManager.Actions.Status))
+            {
+                DaggerfallUI.PostMessage(DaggerfallUIMessages.dfuiStatusInfo);
+            }
+
+            if (InputManager.Instance.ActionComplete(InputManager.Actions.AutoMap))
             {
                 DaggerfallUI.PostMessage(DaggerfallUIMessages.dfuiOpenAutomap);
             }
@@ -388,6 +541,8 @@ namespace DaggerfallWorkshop.Game
         bool hudDisabledByPause = false;
         public void PauseGame(bool pause, bool hideHUD = false)
         {
+            DaggerfallUI.Instance.ShowVersionText = false;
+
             if (pause && !isGamePaused)
             {
                 savedTimeScale = Time.timeScale;
@@ -416,52 +571,136 @@ namespace DaggerfallWorkshop.Game
         }
 
         /// <summary>
-        /// Determines if player is able to rest or not.
-        /// Based on minimum distance to nearest monster, and if monster can actually sense player.
+        /// Determines if enemies are nearby. Uses include whether player is able to rest or not.
+        /// Based on distance to nearest monster, and if monster can actually sense player.
         /// </summary>
-        /// <param name="minMonsterDistance">Monsters must be at least this far away.</param>
-        /// <returns>True if player can rest.</returns>
-        public bool CanPlayerRest(float minMonsterDistance = 12f)
+        /// <param name="minMonsterSpawnerDistance">Monster spawners must be at least this close.</param>
+        /// <returns>True if enemies are nearby.</returns>
+        public bool AreEnemiesNearby(float minMonsterSpawnerDistance = 12f, bool includingPacified = false)
         {
-            const int enemiesNearby = 354;
-
-            if (!PlayerController.isGrounded)
-                return false;
-
-            bool canRest = true;
+            bool areEnemiesNearby = false;
             DaggerfallEntityBehaviour[] entityBehaviours = FindObjectsOfType<DaggerfallEntityBehaviour>();
             for (int i = 0; i < entityBehaviours.Length; i++)
             {
                 DaggerfallEntityBehaviour entityBehaviour = entityBehaviours[i];
                 if (entityBehaviour.EntityType == EntityTypes.EnemyMonster || entityBehaviour.EntityType == EntityTypes.EnemyClass)
                 {
-                    // Is a monster inside min distance?
-                    if (Vector3.Distance(entityBehaviour.transform.position, PlayerController.transform.position) < minMonsterDistance)
-                    {
-                        canRest = false;
-                        break;
-                    }
-
-                    // Is monster already aware of player?
                     EnemySenses enemySenses = entityBehaviour.GetComponent<EnemySenses>();
                     if (enemySenses)
                     {
-                        if (enemySenses.PlayerInSight || enemySenses.PlayerInEarshot)
+                        // Can enemy see player or is close enough they would be spawned in classic?
+                        if ((enemySenses.Target == Instance.PlayerEntityBehaviour && enemySenses.TargetInSight) || enemySenses.WouldBeSpawnedInClassic)
                         {
-                            canRest = false;
-                            break;
+                            // Is it hostile or pacified?
+                            EnemyMotor enemyMotor = entityBehaviour.GetComponent<EnemyMotor>();
+                            if (includingPacified || enemyMotor.IsHostile)
+                            {
+                                areEnemiesNearby = true;
+                                break;
+                            }
                         }
                     }
                 }
             }
 
-            // Alert player if monsters neaby
-            if (!canRest)
+            // Also check for enemy spawners that might emit an enemy
+            FoeSpawner[] spawners = FindObjectsOfType<FoeSpawner>();
+            for (int i = 0; i < spawners.Length; i++)
             {
-                DaggerfallUI.MessageBox(enemiesNearby);
+                // Is a spawner inside min distance?
+                if (Vector3.Distance(spawners[i].transform.position, PlayerController.transform.position) < minMonsterSpawnerDistance)
+                {
+                    areEnemiesNearby = true;
+                    break;
+                }
             }
 
-            return canRest;
+            return areEnemiesNearby;
+        }
+
+        /// <summary>
+        /// Gets how many enemies of a given type exist.
+        /// </summary>
+        /// <param name="type">Enemy type to search for.</param>
+        /// <param name="stopLookingIfFound">Return as soon as an enemy of given type is found.</param>
+        /// <returns>Number of this enemy type.</returns>
+        public int HowManyEnemiesOfType(MobileTypes type, bool stopLookingIfFound = false, bool includingPacified = false)
+        {
+            int numberOfEnemies = 0;
+            DaggerfallEntityBehaviour[] entityBehaviours = FindObjectsOfType<DaggerfallEntityBehaviour>();
+            for (int i = 0; i < entityBehaviours.Length; i++)
+            {
+                DaggerfallEntityBehaviour entityBehaviour = entityBehaviours[i];
+                if (entityBehaviour.EntityType == EntityTypes.EnemyMonster || entityBehaviour.EntityType == EntityTypes.EnemyClass)
+                {
+                    EnemyEntity entity = entityBehaviour.Entity as EnemyEntity;
+                    if (entity.MobileEnemy.ID == (int)type)
+                    {
+                        // Is it hostile or pacified?
+                        EnemyMotor enemyMotor = entityBehaviour.GetComponent<EnemyMotor>();
+                        if (includingPacified || enemyMotor.IsHostile)
+                        {
+                            numberOfEnemies++;
+                            if (stopLookingIfFound)
+                                return numberOfEnemies;
+                        }
+                    }
+                }
+            }
+
+            // Also check for enemy spawners that might emit an enemy
+            FoeSpawner[] spawners = FindObjectsOfType<FoeSpawner>();
+            for (int i = 0; i < spawners.Length; i++)
+            {
+                // Is a spawner inside min distance?
+                if (spawners[i].FoeType == type)
+                {
+                    numberOfEnemies++;
+                    if (stopLookingIfFound)
+                        return numberOfEnemies;
+                }
+            }
+
+            return numberOfEnemies;
+        }
+
+        /// <summary>
+        /// Clears the area of enemies.
+        /// </summary>
+        public void ClearEnemies()
+        {
+            DaggerfallEntityBehaviour[] entityBehaviours = FindObjectsOfType<DaggerfallEntityBehaviour>();
+            for (int i = 0; i < entityBehaviours.Length; i++)
+            {
+                DaggerfallEntityBehaviour entityBehaviour = entityBehaviours[i];
+                if (entityBehaviour.EntityType == EntityTypes.EnemyMonster || entityBehaviour.EntityType == EntityTypes.EnemyClass)
+                    Destroy(entityBehaviour.gameObject);
+            }
+
+            // Also check for enemy spawners that might emit an enemy
+            FoeSpawner[] spawners = FindObjectsOfType<FoeSpawner>();
+            for (int i = 0; i < spawners.Length; i++)
+                Destroy(spawners[i].gameObject);
+        }
+
+        /// <summary>
+        /// Make all enemies in an area go hostile.
+        /// </summary>
+        public void MakeEnemiesHostile()
+        {
+            DaggerfallEntityBehaviour[] entityBehaviours = FindObjectsOfType<DaggerfallEntityBehaviour>();
+            for (int i = 0; i < entityBehaviours.Length; i++)
+            {
+                DaggerfallEntityBehaviour entityBehaviour = entityBehaviours[i];
+                if (entityBehaviour.EntityType == EntityTypes.EnemyMonster || entityBehaviour.EntityType == EntityTypes.EnemyClass)
+                {
+                    EnemyMotor enemyMotor = entityBehaviour.GetComponent<EnemyMotor>();
+                    if (enemyMotor)
+                    {
+                        enemyMotor.IsHostile = true;
+                    }
+                }
+            }
         }
 
         #endregion
@@ -470,7 +709,7 @@ namespace DaggerfallWorkshop.Game
 
         public static bool FindSingleton(out GameManager singletonOut)
         {
-            singletonOut = GameObject.FindObjectOfType(typeof(GameManager)) as GameManager;
+            singletonOut = GameObject.FindObjectOfType<GameManager>();
             if (singletonOut == null)
             {
                 DaggerfallUnity.LogMessage("Could not locate GameManager GameObject instance in scene!", true);
@@ -514,8 +753,10 @@ namespace DaggerfallWorkshop.Game
             return false;
         }
 
-        // Returns true when gameplay is active
-        bool IsPlayingGame()
+        /// <summary>
+        /// Returns true when gameplay is active.
+        /// </summary>
+        public bool IsPlayingGame()
         {
             // Game not active when paused
             if (isGamePaused)
@@ -580,7 +821,11 @@ namespace DaggerfallWorkshop.Game
         {
             T result = (T)GameObject.FindObjectOfType<T>();
             if (result == null)
-                throw new Exception(string.Format("GameManager could not find {0}.", typeof(T)));
+            {
+                string errorText = string.Format("GameManager could not find {0}.", typeof(T));
+                Debug.LogError(errorText);
+                throw new Exception(errorText);
+            }
             else
                 return result;
         }
@@ -602,7 +847,9 @@ namespace DaggerfallWorkshop.Game
             }
             else if(obj == null && string.IsNullOrEmpty(tag))
             {
-                throw new Exception(string.Format("GameManager could not find component type {0} - both object & string were null.", typeof(T), obj.name));
+                string errorText = string.Format("GameManager could not find component type {0} - both object & string were null.", typeof(T));
+                Debug.LogError(errorText);
+                throw new Exception(errorText);
             }
             
             if(obj != null)
@@ -610,7 +857,11 @@ namespace DaggerfallWorkshop.Game
                 result = obj.GetComponent<T>();
             }
             if (result == null)
-                throw new Exception(string.Format("GameManager could not find component type {0} on object {1}.", typeof(T), obj.name));
+            {
+                string errorText = string.Format("GameManager could not find component type {0} on object {1}.", typeof(T), obj.name);
+                Debug.LogError(errorText);
+                throw new Exception(errorText);
+            }
             else
                 return result;
         }
@@ -622,11 +873,19 @@ namespace DaggerfallWorkshop.Game
         /// <returns></returns>
         public static GameObject GetGameObjectWithTag(string tag)
         {
-            if(string.IsNullOrEmpty(tag))
-                throw new Exception(string.Format("GameManager could not find GameObject with tag as string was null or empty"));
+            if (string.IsNullOrEmpty(tag))
+            {
+                string errorText = string.Format("GameManager could not find GameObject with tag as string was null or empty");
+                Debug.LogError(errorText);
+                throw new Exception(errorText);
+            }
             GameObject result = GameObject.FindGameObjectWithTag(tag);
             if (result == null)
-                throw new Exception(string.Format("GameManager could not find GameObject with tag {0}", tag));
+            {
+                string errorText = string.Format("GameManager could not find GameObject with tag {0}", tag);
+                Debug.LogError(errorText);
+                throw new Exception(errorText);
+            }
             else
                 return result;
         }
@@ -639,10 +898,18 @@ namespace DaggerfallWorkshop.Game
         public static GameObject GetGameObjectWithName(string name)
         {
             if (string.IsNullOrEmpty(name))
-                throw new Exception(string.Format("GameManager could not find GameObject with name as string was null or empty"));
+            {
+                string errorText = string.Format("GameManager could not find GameObject with name as string was null or empty");
+                Debug.LogError(errorText);
+                throw new Exception(errorText);
+            }
             GameObject result = GameObject.Find(name);
             if (result == null)
-                throw new Exception(string.Format("GameManager could not find GameObject with name {0}", name));
+            {
+                string errorText = string.Format("GameManager could not find GameObject with name {0}", name);
+                Debug.LogError(errorText);
+                throw new Exception(errorText);
+            }
             else
                 return result;
         }

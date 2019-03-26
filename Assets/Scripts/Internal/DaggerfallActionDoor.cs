@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -11,6 +11,11 @@
 
 using UnityEngine;
 using System.Collections;
+using DaggerfallConnect;
+using DaggerfallWorkshop.Game.UserInterfaceWindows;
+using DaggerfallWorkshop.Game.Entity;
+using DaggerfallWorkshop.Game.Formulas;
+using DaggerfallWorkshop.Game.Utility;
 
 namespace DaggerfallWorkshop
 {
@@ -26,13 +31,13 @@ namespace DaggerfallWorkshop
         public float OpenAngle = -90f;                  // Angle to swing door on axis when opening
         public float OpenDuration = 1.5f;               // How long in seconds for door to open
         public bool IsTriggerWhenOpen = true;           // Collider is disabled when door opens
-        public float ChanceToBash = 0.25f;              // Chance of successfully bashing open door (0=no chance, 1=first time)
         public bool PlaySounds = true;                  // Play open and close sounds if present (OpenSound > 0, CloseSound > 0)
+        public short FailedSkillLevel = 0;              // Lockpicking skill of player when they failed to pick lock (TODO: persist across save and load)
 
         public SoundClips OpenSound = SoundClips.NormalDoorOpen;            // Sound clip to use when door opens
         public SoundClips CloseSound = SoundClips.NormalDoorClose;          // Sound clip to use when door closes
         public SoundClips BashSound = SoundClips.PlayerDoorBash;            // Sound clip to use when bashing door
-        public SoundClips LockedSound = SoundClips.ActivateLockUnlock;      // Sound clip to use when trying to open locked door
+        public SoundClips PickedLockSound = SoundClips.ActivateLockUnlock;      // Sound clip to use when successfully picked a locked door
 
         ActionState currentState;
         int startingLockValue = 0;                      // if > 0, is locked.
@@ -76,7 +81,7 @@ namespace DaggerfallWorkshop
 
         public bool IsMagicallyHeld
         {
-            get { return CurrentLockValue >= 160; }
+            get { return CurrentLockValue >= 20; }
         }
 
         public Quaternion ClosedRotation
@@ -104,15 +109,15 @@ namespace DaggerfallWorkshop
                 Open(0, true);
         }
 
-        public void ToggleDoor()
+        public void ToggleDoor(bool activatedByPlayer = false)
         {
             if (IsMoving)
                 return;
 
             if (IsOpen)
-                Close(OpenDuration);
+                Close(OpenDuration, activatedByPlayer);
             else
-                Open(OpenDuration);
+                Open(OpenDuration, false, activatedByPlayer);
         }
 
         public void SetOpen(bool open, bool instant = false, bool ignoreLocks = false)
@@ -124,7 +129,80 @@ namespace DaggerfallWorkshop
                 Close(duration);
         }
 
-        public void AttemptBash()
+        public void LookAtLock()
+        {
+            if (CurrentLockValue < 20)
+            {
+                PlayerEntity player = Game.GameManager.Instance.PlayerEntity;
+                // There seems to be an oversight in classic. It uses two separate lockpicking functions (seems to be one for animated doors in interiors and one for exterior doors)
+                // but the difficulty text is always based on the exterior function.
+                // DF Unity doesn't have exterior locked doors yet, so the below uses the interior function.
+                int chance = FormulaHelper.CalculateInteriorLockpickingChance(player.Level, CurrentLockValue, player.Skills.GetLiveSkillValue(DFCareer.Skills.Lockpicking));
+
+                if (chance >= 30)
+                    if (chance >= 35)
+                        if (chance >= 95)
+                            Game.DaggerfallUI.SetMidScreenText(HardStrings.lockpickChance[9]);
+                        else if (chance >= 45)
+                            Game.DaggerfallUI.SetMidScreenText(HardStrings.lockpickChance[(chance - 45) / 5]);
+                        else
+                            Game.DaggerfallUI.SetMidScreenText(HardStrings.lockpickChance3);
+                    else
+                        Game.DaggerfallUI.SetMidScreenText(HardStrings.lockpickChance2);
+                else
+                    Game.DaggerfallUI.SetMidScreenText(HardStrings.lockpickChance1);
+            }
+            else
+                Game.DaggerfallUI.SetMidScreenText(HardStrings.magicLock);
+        }
+
+        public void AttemptLockpicking()
+        {
+            if (IsMoving)
+            {
+                return;
+            }
+
+            PlayerEntity player = Game.GameManager.Instance.PlayerEntity;
+
+            // If player fails at their current lockpicking skill level, they can't try again
+            if (FailedSkillLevel == player.Skills.GetLiveSkillValue(DFCareer.Skills.Lockpicking))
+            {
+                return;
+            }
+
+            if (!IsMagicallyHeld)
+            {
+                int chance = 0;
+                player.TallySkill(DFCareer.Skills.Lockpicking, 1);
+                chance = FormulaHelper.CalculateInteriorLockpickingChance(player.Level, CurrentLockValue, player.Skills.GetLiveSkillValue(DFCareer.Skills.Lockpicking));
+
+                if (Dice100.FailedRoll(chance))
+                {
+                    Game.DaggerfallUI.Instance.PopupMessage(HardStrings.lockpickingFailure);
+                    FailedSkillLevel = player.Skills.GetLiveSkillValue(DFCareer.Skills.Lockpicking);
+                }
+                else
+                {
+                    Game.DaggerfallUI.Instance.PopupMessage(HardStrings.lockpickingSuccess);
+                    CurrentLockValue = 0;
+
+                    if (PlaySounds && PickedLockSound > 0 && audioSource)
+                    {
+                        DaggerfallAudioSource dfAudioSource = GetComponent<DaggerfallAudioSource>();
+                        if (dfAudioSource != null)
+                            dfAudioSource.PlayOneShot(PickedLockSound);
+                    }
+                    ToggleDoor(true);
+                }
+            }
+            else
+            {
+                Game.DaggerfallUI.Instance.PopupMessage(HardStrings.lockpickingFailure);
+            }
+        }
+
+        public void AttemptBash(bool byPlayer)
         {
             if (!IsOpen)
             {
@@ -140,14 +218,16 @@ namespace DaggerfallWorkshop
                 if (!IsMagicallyHeld)
                 {
                     // Roll for chance to open
-                    UnityEngine.Random.InitState(Time.frameCount);
-                    float roll = UnityEngine.Random.Range(0f, 1f);
-                    if (roll >= (1f - ChanceToBash))
+                    int chance = 20 - CurrentLockValue;
+                    if (Dice100.SuccessRoll(chance))
                     {
                         CurrentLockValue = 0;
-                        ToggleDoor();
+                        ToggleDoor(true);
                     }
                 }
+
+                if (byPlayer && Game.GameManager.Instance.PlayerEnterExit.IsPlayerInsideDungeonCastle)
+                    Game.GameManager.Instance.MakeEnemiesHostile();
             }
         }
 
@@ -156,7 +236,7 @@ namespace DaggerfallWorkshop
             OpenSound = SoundClips.NormalDoorOpen;
             CloseSound = SoundClips.NormalDoorClose;
             BashSound = SoundClips.PlayerDoorBash;
-            LockedSound = SoundClips.ActivateLockUnlock;
+            PickedLockSound = SoundClips.ActivateLockUnlock;
         }
 
         public void SetDungeonDoorSounds()
@@ -164,16 +244,16 @@ namespace DaggerfallWorkshop
             OpenSound = SoundClips.DungeonDoorOpen;
             CloseSound = SoundClips.DungeonDoorClose;
             BashSound = SoundClips.PlayerDoorBash;
-            LockedSound = SoundClips.ActivateLockUnlock;
+            PickedLockSound = SoundClips.ActivateLockUnlock;
         }
 
         /// <summary>
-        /// Restarts a tween in progress. For exmaple, if restoring from save.
+        /// Restarts a tween in progress. For example, if restoring from save.
         /// </summary>
         public void RestartTween(float durationScale = 1)
         {
             if (currentState == ActionState.PlayingForward)
-                Open(OpenDuration * durationScale);
+                Open(OpenDuration, false, false, durationScale);
             else if (currentState == ActionState.PlayingReverse)
                 Close(OpenDuration * durationScale);
             else if (currentState == ActionState.End)
@@ -182,69 +262,61 @@ namespace DaggerfallWorkshop
 
         #region Private Methods
 
-        private void Open(float duration, bool ignoreLocks = false)
+        private void Open(float duration, bool ignoreLocks = false, bool activatedByPlayer = false, float scale = 1)
         {
+            // Handle DoorText actions. On first activation, show the text but don't try to open the door.
+            DaggerfallAction action = GetComponent<DaggerfallAction>();
+            if (action != null
+                && action.ActionFlag == DFBlock.RdbActionFlags.DoorText
+                && (action.TriggerFlag == DFBlock.RdbTriggerFlags.Door || action.TriggerFlag == DFBlock.RdbTriggerFlags.Direct) // Door to Mynisera's room has a "Direct" trigger flag
+                && action.activationCount == 0
+                && activatedByPlayer)
+            {
+                ExecuteActionOnToggle();
+                if (!action.ActionEnabled) // ActionEnabled will still be false if there was valid text to display. In that case, don't open the door for this first activation.
+                    return;
+            }
+
             // Do nothing if door cannot be opened right now
             if ((IsLocked && !ignoreLocks) || IsOpen)
             {
-                // Play open sound if flagged and ready
-                if (PlaySounds && LockedSound > 0 && duration > 0 && audioSource)
-                {
-                    DaggerfallAudioSource dfAudioSource = GetComponent<DaggerfallAudioSource>();
-                    if (dfAudioSource != null)
-                        dfAudioSource.PlayOneShot(LockedSound);
-                }
-
-                //Just a temp. setup to provide feedback on locks until lockpicking is added
                 if(!IsOpen)
-                {
-                    string lockedDoorMessage = "This door is locked";
-                    if (IsMagicallyHeld)
-                        lockedDoorMessage = "This is a magically held door";
-                    DaggerfallWorkshop.Game.DaggerfallUI.Instance.PopupMessage(lockedDoorMessage);
-                }
+                    LookAtLock();
                 return;
             }
 
-            //// Tween rotation
-            //Hashtable rotateParams = __ExternalAssets.iTween.Hash(
-            //    "rotation", startingRotation.eulerAngles + new Vector3(0, OpenAngle, 0),
-            //    "time", duration,
-            //    "easetype", __ExternalAssets.iTween.EaseType.linear,
-            //    "oncomplete", "OnCompleteOpen");
-            //__ExternalAssets.iTween.RotateTo(gameObject, rotateParams);
-            //currentState = ActionState.PlayingForward;
+            if (activatedByPlayer)
+                ExecuteActionOnToggle();
 
             // Tween rotation
             Hashtable rotateParams = __ExternalAssets.iTween.Hash(
-                "amount", new Vector3(0f, OpenAngle / 360f, 0f),
+                "amount", new Vector3(0f, OpenAngle * scale / 360f, 0f),
                 "space", Space.Self,
-                "time", duration,
+                "time", duration * scale,
                 "easetype", __ExternalAssets.iTween.EaseType.linear,
                 "oncomplete", "OnCompleteOpen");
             __ExternalAssets.iTween.RotateBy(gameObject, rotateParams);
-            currentState = ActionState.PlayingForward;
 
             // Set collider to trigger only
             MakeTrigger(true);
 
             // Play open sound if flagged and ready
-            if (PlaySounds && OpenSound > 0 && duration > 0 && audioSource)
+            if (PlaySounds && OpenSound > 0 && duration * scale > 0 && audioSource
+                && currentState != ActionState.PlayingForward)
             {
                 DaggerfallAudioSource dfAudioSource = GetComponent<DaggerfallAudioSource>();
                 if (dfAudioSource != null)
                     dfAudioSource.PlayOneShot(OpenSound);
             }
 
-            //For Doors that are also action objects, executes action when door opened / closed
-            ExecuteActionOnToggle();
+            currentState = ActionState.PlayingForward;
 
             // Set flag
             //IsMagicallyHeld = false;
             CurrentLockValue = 0;
         }
 
-        private void Close(float duration)
+        private void Close(float duration, bool activatedByPlayer = false)
         {
             // Do nothing if door cannot be closed right now
             if (IsClosed)
@@ -260,8 +332,11 @@ namespace DaggerfallWorkshop
             __ExternalAssets.iTween.RotateTo(gameObject, rotateParams);
             currentState = ActionState.PlayingReverse;
 
-            //For Doors that are also action objects, executes action when door opened / closed
-            ExecuteActionOnToggle();
+            // For doors that are also action objects, execute action when door opened / closed
+            // Only doing so if player was the activator, to keep DoorText actions from running
+            // when enemies open doors.
+            if (activatedByPlayer)
+                ExecuteActionOnToggle();
         }
 
         private void OnCompleteOpen()
@@ -296,7 +371,6 @@ namespace DaggerfallWorkshop
             DaggerfallAction action = GetComponent<DaggerfallAction>();
             if(action != null)
                 action.Receive(gameObject, DaggerfallAction.TriggerTypes.Door);
-
         }
 
         #endregion

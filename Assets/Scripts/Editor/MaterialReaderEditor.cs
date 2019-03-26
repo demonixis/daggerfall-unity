@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -64,7 +64,6 @@ namespace DaggerfallWorkshop
             var propFogWindowIntensity = Prop("FogWindowIntensity");
             var propCustomWindowIntensity = Prop("CustomWindowIntensity");
             var propAlphaTextureFormat = Prop("AlphaTextureFormat");
-            var propNonAlphaTextureFormat = Prop("NonAlphaTextureFormat");
 
             EditorGUILayout.Space();
             if (!propAtlasTextures.boolValue ||
@@ -92,7 +91,6 @@ namespace DaggerfallWorkshop
 
             EditorGUILayout.Space();
             propAlphaTextureFormat.enumValueIndex = (int)(SupportedAlphaTextureFormats)EditorGUILayout.EnumPopup(new GUIContent("Alpha Texture Format", "TextureFormat of alpha-enabled textures such as billboard cutouts."), (SupportedAlphaTextureFormats)propAlphaTextureFormat.enumValueIndex);
-            propNonAlphaTextureFormat.enumValueIndex = (int)(SupportedNonAlphaTextureFormats)EditorGUILayout.EnumPopup(new GUIContent("Non-Alpha Texture Format", "TextureFormat of non-alpha textures."), (SupportedNonAlphaTextureFormats)propNonAlphaTextureFormat.enumValueIndex);
 
             EditorGUILayout.Space();
             propDayWindowColor.colorValue = EditorGUILayout.ColorField(new GUIContent("Day Window Colour", "The colour of windows by day."), propDayWindowColor.colorValue);

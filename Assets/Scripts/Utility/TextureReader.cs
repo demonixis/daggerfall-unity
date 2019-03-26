@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -16,6 +16,7 @@ using System.Collections.Generic;
 using DaggerfallConnect;
 using DaggerfallConnect.Utility;
 using DaggerfallConnect.Arena2;
+using DaggerfallWorkshop.Utility.AssetInjection;
 
 namespace DaggerfallWorkshop.Utility
 {
@@ -30,7 +31,8 @@ namespace DaggerfallWorkshop.Utility
         public const int EditorFlatsTextureArchive = 199;
         public const int AnimalsTextureArchive = 201;
         public const int LightsTextureArchive = 210;
-        public int[] MiscFlatsTextureArchives = new int[] { 97, 205, 211, 212, 213, 301 };
+        public const int FixedTreasureFlatsArchive = 216;
+        //public int[] MiscFlatsTextureArchives = new int[] { 97, 205, 211, 212, 213, 301 };
 
         /// <summary>
         /// Gets or sets Arena2 path.
@@ -83,12 +85,18 @@ namespace DaggerfallWorkshop.Utility
                 makeNoLongerReadable = false;
             }
 
+            Texture2D texture;
+            if (TextureReplacement.TryImportImage(image.FileName, makeNoLongerReadable, out texture))
+                return texture;
+
+            if (TextureReplacement.TryImportCifRci(image.FileName, record, frame, makeNoLongerReadable, out texture))
+                return texture;
+
             DFSize sz;
             Color32[] colors = image.GetColor32(record, frame, alphaIndex, 0, out sz);
-            Texture2D texture = new Texture2D(sz.Width, sz.Height, TextureFormat.RGBA32, createMipMaps);
+            texture = new Texture2D(sz.Width, sz.Height, TextureFormat.ARGB32, createMipMaps);
             texture.SetPixels32(colors);
             texture.Apply(createMipMaps, makeNoLongerReadable);
-
             return texture;
         }
 
@@ -103,7 +111,7 @@ namespace DaggerfallWorkshop.Utility
                 makeNoLongerReadable = false;
             }
 
-            Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, createMipMaps);
+            Texture2D texture = new Texture2D(width, height, TextureFormat.ARGB32, createMipMaps);
             Color32[] colors = new Color32[width * height];
             for (int i = 0; i < colors.Length; i++)
             {
@@ -154,12 +162,12 @@ namespace DaggerfallWorkshop.Utility
         /// </summary>
         /// <param name="settings">Get texture settings.</param>
         /// <param name="alphaTextureFormat">Alpha TextureFormat.</param>
-        /// <param name="nonAlphaFormat">Non-alpha TextureFormat.</param>
+        /// <param name="textureImport">Options for import of custom textures.</param>
         /// <returns>GetTextureResults.</returns>
         public GetTextureResults GetTexture2D(
             GetTextureSettings settings,
-            SupportedAlphaTextureFormats alphaTextureFormat = SupportedAlphaTextureFormats.RGBA32,
-            SupportedNonAlphaTextureFormats nonAlphaFormat = SupportedNonAlphaTextureFormats.RGB24)
+            SupportedAlphaTextureFormats alphaTextureFormat = SupportedAlphaTextureFormats.ARGB32,
+            TextureImport textureImport = TextureImport.None)
         {
             GetTextureResults results = new GetTextureResults();
 
@@ -197,20 +205,23 @@ namespace DaggerfallWorkshop.Utility
             if (settings.borderSize > 0 && settings.copyToOppositeBorder)
                 ImageProcessing.WrapBorder(ref albedoColors, sz, settings.borderSize);
 
-            // Create albedo texture
-            Texture2D albedoMap = null;
-            if (settings.alphaIndex < 0)
-                albedoMap = new Texture2D(sz.Width, sz.Height, ParseTextureFormat(nonAlphaFormat), MipMaps);
-            else
-                albedoMap = new Texture2D(sz.Width, sz.Height, ParseTextureFormat(alphaTextureFormat), MipMaps);
-            albedoMap.SetPixels32(albedoColors);
-            albedoMap.Apply(true, !settings.stayReadable);
-
-            // Create normal texture - must be ARGB32
-            // Normal maps are bypassed for solid-colour textures
-            Texture2D normalMap = null;
-            if (settings.createNormalMap && textureFile.SolidType == TextureFile.SolidTypes.None)
+            // Set albedo texture
+            Texture2D albedoMap;
+            if (!TextureReplacement.TryImportTexture(settings.archive, settings.record, settings.frame, TextureMap.Albedo, textureImport, out albedoMap))
             {
+                // Create albedo texture
+                albedoMap = new Texture2D(sz.Width, sz.Height, ParseTextureFormat(alphaTextureFormat), MipMaps);
+                albedoMap.SetPixels32(albedoColors);
+                albedoMap.Apply(true, !settings.stayReadable);
+            }
+
+            // Set normal texture (always import normal if present on disk)
+            Texture2D normalMap = null;
+            bool normalMapImported = TextureReplacement.TryImportTexture(settings.archive, settings.record, settings.frame, TextureMap.Normal, textureImport, out normalMap);
+            if (!normalMapImported && settings.createNormalMap && textureFile.SolidType == TextureFile.SolidTypes.None)
+            {
+                // Create normal texture - must be ARGB32
+                // Normal maps are bypassed for solid-colour textures
                 Color32[] normalColors;
                 normalColors = ImageProcessing.GetBumpMap(ref albedoColors, sz.Width, sz.Height);
                 normalColors = ImageProcessing.ConvertBumpToNormals(ref normalColors, sz.Width, sz.Height, settings.normalStrength);
@@ -219,39 +230,47 @@ namespace DaggerfallWorkshop.Utility
                 normalMap.Apply(true, !settings.stayReadable);
             }
 
-            // Create basic emissive texture
+            // Import emission map or create basic emissive texture
             Texture2D emissionMap = null;
             bool resultEmissive = false;
-            if (settings.createEmissionMap || (settings.autoEmission && isEmissive) && !isWindow)
+            if (TextureReplacement.TryImportTexture(settings.archive, settings.record, settings.frame, TextureMap.Emission, textureImport, out emissionMap))
             {
-                // Just reuse albedo map for basic colour emission
-                emissionMap = albedoMap;
+                // Always import emission if present on disk
                 resultEmissive = true;
             }
-
-            // Windows need special handling as only glass parts are emissive
-            if ((settings.createEmissionMap || settings.autoEmissionForWindows) && isWindow)
+            else
             {
-                // Create custom emission texture for glass area of windows
-                Color32[] emissionColors = textureFile.GetWindowColors32(srcBitmap);
-                emissionMap = new Texture2D(sz.Width, sz.Height, ParseTextureFormat(alphaTextureFormat), MipMaps);
-                emissionMap.SetPixels32(emissionColors);
-                emissionMap.Apply(true, !settings.stayReadable);
-                resultEmissive = true;
-            }
-
-            // Lights need special handling as this archive contains a mix of emissive and non-emissive flats
-            // This can cause problems with atlas packing due to mismatch between albedo and emissive texture counts
-            if ((settings.createEmissionMap || settings.autoEmission) && settings.archive == LightsTextureArchive)
-            {
-                // For the unlit flats we create a null-emissive black texture
-                if (!isEmissive)
+                if (settings.createEmissionMap || (settings.autoEmission && isEmissive) && !isWindow)
                 {
-                    Color32[] emissionColors = new Color32[sz.Width * sz.Height];
+                    // Just reuse albedo map for basic colour emission
+                    emissionMap = albedoMap;
+                    resultEmissive = true;
+                }
+
+                // Windows need special handling as only glass parts are emissive
+                if ((settings.createEmissionMap || settings.autoEmissionForWindows) && isWindow)
+                {
+                    // Create custom emission texture for glass area of windows
+                    Color32[] emissionColors = textureFile.GetWindowColors32(srcBitmap);
                     emissionMap = new Texture2D(sz.Width, sz.Height, ParseTextureFormat(alphaTextureFormat), MipMaps);
                     emissionMap.SetPixels32(emissionColors);
                     emissionMap.Apply(true, !settings.stayReadable);
                     resultEmissive = true;
+                }
+
+                // Lights need special handling as this archive contains a mix of emissive and non-emissive flats
+                // This can cause problems with atlas packing due to mismatch between albedo and emissive texture counts
+                if ((settings.createEmissionMap || settings.autoEmission) && settings.archive == LightsTextureArchive)
+                {
+                    // For the unlit flats we create a null-emissive black texture
+                    if (!isEmissive)
+                    {
+                        Color32[] emissionColors = new Color32[sz.Width * sz.Height];
+                        emissionMap = new Texture2D(sz.Width, sz.Height, ParseTextureFormat(alphaTextureFormat), MipMaps);
+                        emissionMap.SetPixels32(emissionColors);
+                        emissionMap.Apply(true, !settings.stayReadable);
+                        resultEmissive = true;
+                    }
                 }
             }
 
@@ -283,12 +302,10 @@ namespace DaggerfallWorkshop.Utility
         /// </summary>
         /// <param name="settings">Get texture settings.</param>
         /// <param name="alphaTextureFormat">Alpha TextureFormat.</param>
-        /// <param name="nonAlphaFormat">Non-alpha TextureFormat.</param>
         /// <returns>GetTextureResults.</returns>
         public GetTextureResults GetTexture2DAtlas(
             GetTextureSettings settings,
-            SupportedAlphaTextureFormats alphaTextureFormat = SupportedAlphaTextureFormats.RGBA32,
-            SupportedNonAlphaTextureFormats nonAlphaFormat = SupportedNonAlphaTextureFormats.RGB24)
+            SupportedAlphaTextureFormats alphaTextureFormat = SupportedAlphaTextureFormats.ARGB32)
         {
             GetTextureResults results = new GetTextureResults();
 
@@ -316,6 +333,7 @@ namespace DaggerfallWorkshop.Utility
             bool hasNormalMaps = false;
             bool hasEmissionMaps = false;
             bool hasAnimation = false;
+            var textureImport = settings.atlasMaxSize == 4096 ? TextureImport.AllLocations : TextureImport.None;
             List<Texture2D> albedoTextures = new List<Texture2D>();
             List<Texture2D> normalTextures = new List<Texture2D>();
             List<Texture2D> emissionTextures = new List<Texture2D>();
@@ -343,7 +361,8 @@ namespace DaggerfallWorkshop.Utility
                 for (int frame = 0; frame < frames; frame++)
                 {
                     settings.frame = frame;
-                    GetTextureResults nextTextureResults = GetTexture2D(settings, alphaTextureFormat, nonAlphaFormat);
+                    GetTextureResults nextTextureResults = GetTexture2D(settings, alphaTextureFormat, textureImport);
+
                     albedoTextures.Add(nextTextureResults.albedoMap);
                     if (nextTextureResults.normalMap != null)
                     {
@@ -417,59 +436,59 @@ namespace DaggerfallWorkshop.Utility
             return results;
         }
 
-        /// <summary>
-        /// TEMP: Creates super-atlas populated with all archives in array.
-        /// Currently does not support animated textures, normal map, or emission map.
-        /// TODO: Integrate this feature fully with material system.
-        /// </summary>
-        /// <param name="archives">Archive array.</param>
-        /// <param name="borderSize">Number of pixels border to add around image.</param>
-        /// <param name="dilate">Blend texture into surrounding empty pixels. Requires border.</param>
-        /// <param name="maxAtlasSize">Maximum atlas size.</param>
-        /// <param name="alphaTextureFormat">Alpha TextureFormat.</param>
-        /// <param name="nonAlphaFormat">Non-alpha TextureFormat.</param>
-        /// <returns>TextureAtlasBuilder.</returns>
-        public TextureAtlasBuilder CreateTextureAtlasBuilder(
-            int[] archives,
-            int borderSize = 0,
-            bool dilate = false,
-            int maxAtlasSize = 2048,
-            SupportedAlphaTextureFormats alphaTextureFormat = SupportedAlphaTextureFormats.RGBA32,
-            SupportedNonAlphaTextureFormats nonAlphaFormat = SupportedNonAlphaTextureFormats.RGB24)
-        {
-            // Iterate archives
-            TextureFile textureFile = new TextureFile();
-            TextureAtlasBuilder builder = new TextureAtlasBuilder();
-            GetTextureSettings settings = TextureReader.CreateTextureSettings(0, 0, 0, 0, borderSize, dilate, maxAtlasSize);
-            settings.stayReadable = true;
-            for (int i = 0; i < archives.Length; i++)
-            {
-                // Load texture file
-                settings.archive = archives[i];
-                textureFile.Load(Path.Combine(Arena2Path, TextureFile.IndexToFileName(settings.archive)), FileUsage.UseMemory, true);
+        ///// <summary>
+        ///// TEMP: Creates super-atlas populated with all archives in array.
+        ///// Currently does not support animated textures, normal map, or emission map.
+        ///// TODO: Integrate this feature fully with material system.
+        ///// </summary>
+        ///// <param name="archives">Archive array.</param>
+        ///// <param name="borderSize">Number of pixels border to add around image.</param>
+        ///// <param name="dilate">Blend texture into surrounding empty pixels. Requires border.</param>
+        ///// <param name="maxAtlasSize">Maximum atlas size.</param>
+        ///// <param name="alphaTextureFormat">Alpha TextureFormat.</param>
+        ///// <param name="nonAlphaFormat">Non-alpha TextureFormat.</param>
+        ///// <returns>TextureAtlasBuilder.</returns>
+        //public TextureAtlasBuilder CreateTextureAtlasBuilder(
+        //    int[] archives,
+        //    int borderSize = 0,
+        //    bool dilate = false,
+        //    int maxAtlasSize = 2048,
+        //    SupportedAlphaTextureFormats alphaTextureFormat = SupportedAlphaTextureFormats.ARGB32,
+        //    SupportedNonAlphaTextureFormats nonAlphaFormat = SupportedNonAlphaTextureFormats.RGB24)
+        //{
+        //    // Iterate archives
+        //    TextureFile textureFile = new TextureFile();
+        //    TextureAtlasBuilder builder = new TextureAtlasBuilder();
+        //    GetTextureSettings settings = TextureReader.CreateTextureSettings(0, 0, 0, 0, borderSize, dilate, maxAtlasSize);
+        //    settings.stayReadable = true;
+        //    for (int i = 0; i < archives.Length; i++)
+        //    {
+        //        // Load texture file
+        //        settings.archive = archives[i];
+        //        textureFile.Load(Path.Combine(Arena2Path, TextureFile.IndexToFileName(settings.archive)), FileUsage.UseMemory, true);
 
-                // Add all records for this archive - single frame only
-                for (int record = 0; record < textureFile.RecordCount; record++)
-                {
-                    settings.record = record;
-                    GetTextureResults results = GetTexture2D(settings, alphaTextureFormat, nonAlphaFormat);
-                    DFSize size = textureFile.GetSize(record);
-                    DFSize scale = textureFile.GetScale(record);
-                    builder.AddTextureItem(
-                        results.albedoMap,
-                        settings.archive,
-                        settings.record,
-                        0, 1,
-                        new Vector2(size.Width, size.Height),
-                        new Vector2(scale.Width, scale.Height));
-                }
-            }
+        //        // Add all records for this archive - single frame only
+        //        for (int record = 0; record < textureFile.RecordCount; record++)
+        //        {
+        //            settings.record = record;
+        //            GetTextureResults results = GetTexture2D(settings, alphaTextureFormat, nonAlphaFormat);
+        //            DFSize size = textureFile.GetSize(record);
+        //            DFSize scale = textureFile.GetScale(record);
+        //            builder.AddTextureItem(
+        //                results.albedoMap,
+        //                settings.archive,
+        //                settings.record,
+        //                0, 1,
+        //                new Vector2(size.Width, size.Height),
+        //                new Vector2(scale.Width, scale.Height));
+        //        }
+        //    }
 
-            // Apply the builder
-            builder.Rebuild(borderSize);
+        //    // Apply the builder
+        //    builder.Rebuild(borderSize);
             
-            return builder;
-        }
+        //    return builder;
+        //}
 
         /// <summary>
         /// Gets specially packed tileset atlas for terrains.
@@ -477,12 +496,10 @@ namespace DaggerfallWorkshop.Utility
         /// </summary>
         /// <param name="archive">Archive index.</param>
         /// <param name="stayReadable">Texture should stay readable.</param>
-        /// <param name="nonAlphaFormat">Non-alpha TextureFormat.</param>
         /// <returns></returns>
         public GetTextureResults GetTerrainTilesetTexture(
             int archive,
-            bool stayReadable = false,
-            SupportedNonAlphaTextureFormats nonAlphaFormat = SupportedNonAlphaTextureFormats.RGB24)
+            bool stayReadable = false)
         {
             const int atlasDim = 2048;
             const int gutterSize = 32;
@@ -501,7 +518,7 @@ namespace DaggerfallWorkshop.Utility
             int x = 0, y = 0;
             Color32[] atlasColors = new Color32[atlasDim * atlasDim];
             for (int record = 0; record < textureFile.RecordCount; record++)
-            {
+            {              
                 // Create base image with gutter
                 DFSize sz;
                 Color32[] albedo = textureFile.GetColor32(record, 0, -1, gutterSize, out sz);
@@ -583,7 +600,7 @@ namespace DaggerfallWorkshop.Utility
             }
 
             // Create Texture2D
-            Texture2D albedoAtlas = new Texture2D(atlasDim, atlasDim, ParseTextureFormat(nonAlphaFormat), MipMaps);
+            Texture2D albedoAtlas = new Texture2D(atlasDim, atlasDim, TextureFormat.ARGB32, MipMaps);
             albedoAtlas.SetPixels32(atlasColors);
             albedoAtlas.Apply(true, !stayReadable);
 
@@ -597,10 +614,226 @@ namespace DaggerfallWorkshop.Utility
             return results;
         }
 
+        /// <summary>
+        /// Gets terrain albedo texture array containing each terrain tile in a seperate array slice.        
+        /// </summary>
+        /// <param name="archive">Archive index.</param>
+        /// <param name="stayReadable">Texture should stay readable.</param>
+        /// <returns>Texture2DArray or null</returns>
+        public Texture2DArray GetTerrainAlbedoTextureArray(
+            int archive,
+            bool stayReadable = false)
+        {
+            // Load texture file and check count matches terrain tiles
+            TextureFile textureFile = new TextureFile(Path.Combine(Arena2Path, TextureFile.IndexToFileName(archive)), FileUsage.UseMemory, true);
+            int numSlices = 0;
+            if (textureFile.RecordCount == 56)
+            {
+                numSlices = textureFile.RecordCount;
+            }
+            else
+            {
+                return null;
+            }
+
+            Texture2DArray textureArray;
+            Texture2D albedoMap;
+
+            if (TextureReplacement.TryImportTexture(archive, 0, 0, out albedoMap))
+            {
+                textureArray = new Texture2DArray(albedoMap.width, albedoMap.height, numSlices, TextureFormat.ARGB32, MipMaps);
+            }
+            else
+            {
+                textureArray = new Texture2DArray(textureFile.GetWidth(0), textureFile.GetWidth(1), numSlices, TextureFormat.ARGB32, MipMaps);
+            }
+
+            // Rollout tiles into texture array
+            for (int record = 0; record < textureFile.RecordCount; record++)
+            {
+                Color32[] albedo;
+
+                if (TextureReplacement.TryImportTexture(archive, record, 0, out albedoMap))
+                {
+                    // Import custom texture
+                    albedo = albedoMap.GetPixels32();
+                }
+                else
+                {
+                    // Create base image with gutter
+                    DFSize sz;
+                    albedo = textureFile.GetColor32(record, 0, -1, 0, out sz);
+                }
+
+                // Insert into texture array
+                textureArray.SetPixels32(albedo, record, 0);
+            }
+            textureArray.Apply(true, !stayReadable);
+
+            // Change settings for these textures
+            textureArray.wrapMode = TextureWrapMode.Clamp;
+            textureArray.anisoLevel = 8;
+
+            return textureArray;
+        }
+
+
+        /// <summary>
+        /// Gets terrain normal map texture array containing each terrain tile in a seperate array slice.        
+        /// </summary>
+        /// <param name="archive">Archive index.</param>
+        /// <param name="stayReadable">Texture should stay readable.</param>
+        /// <param name="nonAlphaFormat">Non-alpha TextureFormat.</param>
+        /// <returns>Texture2DArray or null</returns>
+        public Texture2DArray GetTerrainNormalMapTextureArray(
+            int archive,
+            bool stayReadable = false,
+            SupportedAlphaTextureFormats alphaFormat = SupportedAlphaTextureFormats.ARGB32)
+        {
+            // Load texture file and check count matches terrain tiles
+            TextureFile textureFile = new TextureFile(Path.Combine(Arena2Path, TextureFile.IndexToFileName(archive)), FileUsage.UseMemory, true);
+            int numSlices = 0;
+            if (textureFile.RecordCount == 56)
+            {
+                numSlices = textureFile.RecordCount;
+            }
+            else
+            {
+                return null;
+            }
+
+            Texture2DArray textureArray;
+            int width;
+            int height;
+
+            // try to import first replacement texture for tile archive to determine width and height of replacement texture set (must be the same for all replacement textures for Texture2DArray)
+            Texture2D normalMap;
+            if (TextureReplacement.TryImportTexture(archive, 0, 0, TextureMap.Normal, out normalMap))
+            {
+                width = normalMap.width;
+                height = normalMap.height;
+            }
+            else
+            {
+                return null;
+            }
+
+            textureArray = new Texture2DArray(width, height, numSlices, ParseTextureFormat(alphaFormat), MipMaps);
+
+            // Rollout tiles into texture array
+            for (int record = 0; record < textureFile.RecordCount; record++)
+            {
+                // Import custom texture(s)
+                if (!TextureReplacement.TryImportTexture(archive, record, 0, TextureMap.Normal, out normalMap))
+                {
+                    // if current texture does not exist
+                    Debug.LogErrorFormat("Terrain: imported archive {0} does not contain normal for record {1}.", archive, record);
+                    return null;
+                }
+
+                // enforce that all custom normal map textures have the same dimension (requirement of Texture2DArray)
+                if ((normalMap.width != width) || (normalMap.height != height))
+                {
+                    Debug.LogErrorFormat("Terrain: failed to inject normal maps for archive {0}, incorrect size at record {1}.", archive, record);
+                    return null;
+                }
+
+                // Insert into texture array
+                textureArray.SetPixels32(normalMap.GetPixels32(), record, 0);
+            }
+            textureArray.Apply(true, !stayReadable);
+
+            // Change settings for these textures
+            textureArray.wrapMode = TextureWrapMode.Clamp;
+            textureArray.anisoLevel = 8;
+
+            return textureArray;
+        }
+
+        /// <summary>
+        /// Gets terrain metallic gloss map texture array containing each terrain tile in a seperate array slice.        
+        /// </summary>
+        /// <param name="archive">Archive index.</param>
+        /// <param name="stayReadable">Texture should stay readable.</param>
+        /// <param name="nonAlphaFormat">Non-alpha TextureFormat.</param>
+        /// <returns>Texture2DArray or null</returns>
+        public Texture2DArray GetTerrainMetallicGlossMapTextureArray(
+            int archive,
+            bool stayReadable = false)
+        {
+            Color32[] defaultMetallicGlossMap;
+
+            // Load texture file and check count matches terrain tiles
+            TextureFile textureFile = new TextureFile(Path.Combine(Arena2Path, TextureFile.IndexToFileName(archive)), FileUsage.UseMemory, true);
+            int numSlices = 0;
+            if (textureFile.RecordCount == 56)
+            {
+                numSlices = textureFile.RecordCount;
+            }
+            else
+            {
+                return null;
+            }
+
+            Texture2DArray textureArray;
+            int width;
+            int height;
+
+            // try to import first replacement texture for tile archive to determine width and height of replacement texture set (must be the same for all replacement textures for Texture2DArray)
+            Texture2D metallicGlossMap;
+            if (TextureReplacement.TryImportTexture(archive, 0, 0, TextureMap.MetallicGloss, out metallicGlossMap))
+            {                
+                width = metallicGlossMap.width;
+                height = metallicGlossMap.height;                
+            }
+            else
+            {
+                // create default texture array (1x1 texture)
+                width = 1;
+                height = 1;
+            }
+
+            textureArray = new Texture2DArray(width, height, numSlices, TextureFormat.ARGB32, MipMaps);
+
+            defaultMetallicGlossMap = new Color32[width*height];
+            for (int i = 0; i < width * height; i++)
+            {
+                defaultMetallicGlossMap[i] = new Color32(0, 0, 0, 255);
+            }        
+
+            // Rollout tiles into texture array
+            for (int record = 0; record < textureFile.RecordCount; record++)
+            {
+                // Import custom texture(s)
+                if (!TextureReplacement.TryImportTexture(archive, record, 0, TextureMap.MetallicGloss, out metallicGlossMap))
+                {
+                    metallicGlossMap = new Texture2D(width, height, TextureFormat.ARGB32, MipMaps);
+                    metallicGlossMap.SetPixels32(defaultMetallicGlossMap);
+                }
+
+                // enforce that all custom metallicgloss map textures have the same dimension (requirement of Texture2DArray)
+                if ((metallicGlossMap.width != width) || (metallicGlossMap.height != height))
+                {
+                    Debug.LogErrorFormat("Terrain: failed to inject metallicgloss maps for archive {0}, incorrect size at record {1}.", archive, record);
+                    return null;
+                }
+
+                // Insert into texture array
+                textureArray.SetPixels32(metallicGlossMap.GetPixels32(), record, 0);
+            }
+            textureArray.Apply(true, !stayReadable);
+
+            // Change settings for these textures
+            textureArray.wrapMode = TextureWrapMode.Clamp;
+            textureArray.anisoLevel = 8;
+
+            return textureArray;
+        }
+
         #region Helpers
 
         // Textures that should receive emission map
-        // TODO: This should be set by a user-managed list somewhere
+        // TODO: Consider setting this from an external list
         DaggerfallTextureIndex[] emissiveTextures = new DaggerfallTextureIndex[]
         {
             // Mantellan Crux fire textures
@@ -639,6 +872,18 @@ namespace DaggerfallWorkshop.Utility
             new DaggerfallTextureIndex() { archive = 210, record = 27 },
             new DaggerfallTextureIndex() { archive = 210, record = 28 },
             new DaggerfallTextureIndex() { archive = 210, record = 29 },
+
+            // Spell missiles
+            new DaggerfallTextureIndex() { archive = 375, record = 0 },
+            new DaggerfallTextureIndex() { archive = 375, record = 1 },
+            new DaggerfallTextureIndex() { archive = 376, record = 0 },
+            new DaggerfallTextureIndex() { archive = 376, record = 1 },
+            new DaggerfallTextureIndex() { archive = 377, record = 0 },
+            new DaggerfallTextureIndex() { archive = 377, record = 1 },
+            new DaggerfallTextureIndex() { archive = 378, record = 0 },
+            new DaggerfallTextureIndex() { archive = 378, record = 1 },
+            new DaggerfallTextureIndex() { archive = 379, record = 0 },
+            new DaggerfallTextureIndex() { archive = 379, record = 1 },
         };
 
         public bool IsEmissive(int archive, int record)
@@ -659,7 +904,7 @@ namespace DaggerfallWorkshop.Utility
         }
 
 #if UNITY_EDITOR && !UNITY_WEBPLAYER
-        public void SaveTextureToPNG(Texture2D source, string path)
+        public static void SaveTextureToPNG(Texture2D source, string path)
         {
             byte[] bytes = source.EncodeToPNG();
             File.WriteAllBytes(path, bytes);
@@ -683,18 +928,6 @@ namespace DaggerfallWorkshop.Utility
                     return TextureFormat.ARGB4444;
                 case SupportedAlphaTextureFormats.RGBA444:
                     return TextureFormat.RGBA4444;
-            }
-        }
-
-        private TextureFormat ParseTextureFormat(SupportedNonAlphaTextureFormats format)
-        {
-            switch (format)
-            {
-                default:
-                case SupportedNonAlphaTextureFormats.RGB24:
-                    return TextureFormat.RGB24;
-                case SupportedNonAlphaTextureFormats.RGB565:
-                    return TextureFormat.RGB565;
             }
         }
 

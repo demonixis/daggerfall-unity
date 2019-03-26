@@ -4,6 +4,7 @@
 -- Questor: fighter
 -- Repute: 0
 -- QuestId: 7
+-- Edited for Daggerfall Unity by Jay_H
 Messages: 81
 Quest: M0B00Y07
 -- Message panels
@@ -11,19 +12,19 @@ QRC:
 
 QuestorOffer:  [1000]
 <ce>                 Every once in a while we get an idiot
-<ce>                  like this client. Some fool left his
-<ce>                back door open and a wild animal got in.
-<ce>                 He seems rather confused as to whether
-<ce>                 it is a bear or a tiger, but in either
+<ce>                 like this client. Some fool left his
+<ce>               back door open and a wild animal got in.
+<ce>                He seems rather confused as to whether
+<ce>                it is a bear or a tiger, but in either
 <ce>                  case, it wanted to eat him. We need
-<ce>                   you to go and slay the animal. You
-<ce>                      standard fee is _gold_ gold.
+<ce>                  you to go and slay the animal. You
+<ce>                     standard fee is _gold_ gold.
 <ce>                         Want to take it %pcn?
 
 RefuseQuest:  [1001]
 <ce>                  Gotcha. Let the tiger have him. The
-<ce>                   guy is a fool for letting it in in
-<ce>                          the first place, eh?
+<ce>                  guy is a fool for letting it in in
+<ce>                         the first place, eh?
 
 AcceptQuest:  [1002]
 <ce>                     Great. Go over to _house_ in
@@ -32,7 +33,7 @@ AcceptQuest:  [1002]
 
 QuestComplete:  [1004]
 <ce>                        No great difficulties I
-<ce>                       trust? Thought not. Here's
+<ce>                      trust? Thought not. Here's
 <ce>                           your _gold_ gold.
 
 RumorsDuringQuest:  [1005]
@@ -42,18 +43,18 @@ RumorsDuringQuest:  [1005]
 
 RumorsPostfailure:  [1006]
 <ce>                    Didn't you kill that rampaging
-<ce>                      tiger that got into _house_?
+<ce>                     tiger that got into _house_?
 
 RumorsPostsuccess:  [1007]
 <ce>                    A tiger killed some poor bloke
-<ce>                  in his own home. A terrible tragedy.
+<ce>                 in his own home. A terrible tragedy.
 
 QuestorPostsuccess:  [1008]
 <ce>                      Good going with that tiger.
 
 QuestorPostfailure:  [1009]
 <ce>                Tigers are tough. Maybe we should start
-<ce>                  you out with chipmunks. What a putz.
+<ce>                 you out with chipmunks. What a putz.
 
 QuestLogEntry:  [1010]
 %qdt:
@@ -67,10 +68,13 @@ QuestLogEntry:  [1010]
 Message:  1011
 <ce>                        The _monster_ is dead.
 
+Message:  1012
+<ce>                          The _bear_ is dead.
+
 Message:  1080
 <ce>                      Hey, I just remembered, one
 <ce>                       of the members just found
-<ce>                        this map to ___newdung_.
+<ce>                       this map to ___newdung_.
 <ce>                   Don't kill everything in one day.
 
 
@@ -82,6 +86,7 @@ Message:  1080
 --       ___newdung_ occurs 1 time.
 --        ___qgiver_ occurs 1 time.
 --          __house_ occurs 2 times.
+--            _bear_ occurs 2 times.
 --            _gold_ occurs 4 times.
 --           _house_ occurs 5 times.
 --         _monster_ occurs 2 times.
@@ -103,28 +108,36 @@ Foe _bear_ is Grizzley_bear
 --	Quest start-up:
 	start timer _2dung_ 
 	log 1010 step 0 
+	pick one of _map_ _nomap_ _nomap_ 
 	pick one of _monster1_ _monster2_ 
 	create npc at _house_ 
 
 _2dung_ task:
 	end quest 
 
-_S.01_ task:
+_mondead_ task:
 	killed 1 _monster_ saying 1011 
-	killed 1 _bear_ 
+	killed 1 _bear_ saying 1012 
 
 _S.02_ task:
-	clicked npc _qgiver_ 
+	when _qgclicked_ and _mondead_ 
 	give pc _gold_ 
 	end quest 
 
 _clearclick_ task:
-	when _S.02_ and not _S.01_ 
-	clear _S.02_ _clearclick_ 
+	when _qgclicked_ and not _mondead_ 
+	clear _qgclicked_ _clearclick_ 
+
+_qgclicked_ task:
+	clicked npc _qgiver_ 
 
 variable _map_
 variable _nomap_
-variable _S.06_
+_S.06_ task:
+	when _map_ and _S.02_ 
+	reveal _newdung_ readmap
+    say 1080 
+
 _monster1_ task:
 	place foe _bear_ at _house_ 
 

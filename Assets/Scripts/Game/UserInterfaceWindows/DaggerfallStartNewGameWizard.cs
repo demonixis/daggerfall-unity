@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -39,6 +39,9 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         CreateCharRaceSelect createCharRaceSelectWindow;
         CreateCharGenderSelect createCharGenderSelectWindow;
         CreateCharClassSelect createCharClassSelectWindow;
+        CreateCharCustomClass createCharCustomClassWindow;
+        CreateCharChooseBio createCharChooseBioWindow;
+        CreateCharBiography createCharBiographyWindow;
         CreateCharNameSelect createCharNameSelectWindow;
         CreateCharFaceSelect createCharFaceSelectWindow;
         CreateCharAddBonusStats createCharAddBonusStatsWindow;
@@ -57,8 +60,9 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             SelectGender,
             SelectClassMethod,      // Class questions not implemented, goes straight to SelectClassFromList
             SelectClassFromList,
-            CustomClassBuilder,     // Custom class not implemented
-            SelectBiographyMethod,  // Biography not implemented
+            CustomClassBuilder,
+            SelectBiographyMethod,
+            BiographyQuestions,
             SelectName,
             SelectFace,
             AddBonusStats,
@@ -140,6 +144,46 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             uiManager.PushWindow(createCharClassSelectWindow);
         }
 
+        void SetCustomClassWindow()
+        {
+            createCharCustomClassWindow = new CreateCharCustomClass(uiManager);
+            createCharCustomClassWindow.OnClose += CreateCharCustomClassWindow_OnClose;
+            wizardStage = WizardStages.CustomClassBuilder;
+            uiManager.PushWindow(createCharCustomClassWindow);
+        }
+
+        void SetChooseBioWindow()
+        {
+            if (createCharChooseBioWindow == null)
+            {
+                createCharChooseBioWindow = new CreateCharChooseBio(uiManager, createCharRaceSelectWindow);
+                createCharChooseBioWindow.OnClose += CreateCharChooseBioWindow_OnClose;
+            }
+
+            // Reset biography window in case user already answered it then cancelled
+            createCharBiographyWindow = null;
+
+            wizardStage = WizardStages.SelectBiographyMethod;
+            uiManager.PushWindow(createCharChooseBioWindow);
+        }
+
+        void SetBiographyWindow()
+        {
+            if (createCharBiographyWindow == null)
+            {
+                if (!characterDocument.isCustom)
+                {
+                    characterDocument.classIndex = createCharClassSelectWindow.SelectedClassIndex;
+                }
+                createCharBiographyWindow = new CreateCharBiography(uiManager, characterDocument);
+                createCharBiographyWindow.OnClose += CreateCharBiographyWindow_OnClose;
+            }
+                
+            createCharBiographyWindow.ClassIndex = characterDocument.classIndex;
+            wizardStage = WizardStages.BiographyQuestions;
+            uiManager.PushWindow(createCharBiographyWindow);
+        }
+
         void SetNameSelectWindow()
         {
             if (createCharNameSelectWindow == null)
@@ -147,6 +191,9 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 createCharNameSelectWindow = new CreateCharNameSelect(uiManager);
                 createCharNameSelectWindow.OnClose += NameSelectWindow_OnClose;
             }
+
+            createCharNameSelectWindow.RaceTemplate = characterDocument.raceTemplate;
+            createCharNameSelectWindow.Gender = characterDocument.gender;
 
             wizardStage = WizardStages.SelectName;
             uiManager.PushWindow(createCharNameSelectWindow);
@@ -267,12 +314,113 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         {
             if (!createCharClassSelectWindow.Cancelled)
             {
-                characterDocument.career = createCharClassSelectWindow.SelectedClass;
-                SetNameSelectWindow();
+                if (createCharClassSelectWindow.SelectedClass == null) // Custom class
+                {
+                    characterDocument.isCustom = true;
+                    SetCustomClassWindow();
+                }
+                else
+                {
+                    characterDocument.career = createCharClassSelectWindow.SelectedClass;
+                    characterDocument.classIndex = createCharClassSelectWindow.SelectedClassIndex;
+                    SetChooseBioWindow();
+                }
             }
             else
             {
                 SetRaceSelectWindow();
+            }
+        }
+
+        void CreateCharCustomClassWindow_OnClose()
+        {
+            characterDocument.career = createCharCustomClassWindow.CreatedClass;
+            characterDocument.career.Name = createCharCustomClassWindow.ClassName;
+
+            // Determine the most similar class so that we can choose the biography quiz
+            characterDocument.classIndex = BiogFile.GetClassAffinityIndex(characterDocument.career, createCharClassSelectWindow.ClassList);
+
+            // Set reputation adjustments
+            characterDocument.reputationMerchants = createCharCustomClassWindow.MerchantsRep;
+            characterDocument.reputationCommoners = createCharCustomClassWindow.PeasantsRep;
+            characterDocument.reputationScholars = createCharCustomClassWindow.ScholarsRep;
+            characterDocument.reputationNobility = createCharCustomClassWindow.NobilityRep;
+            characterDocument.reputationUnderworld = createCharCustomClassWindow.UnderworldRep;
+
+            // Set attributes
+            characterDocument.career.Strength = createCharCustomClassWindow.Stats.WorkingStats.LiveStrength;
+            characterDocument.career.Intelligence = createCharCustomClassWindow.Stats.WorkingStats.LiveIntelligence;
+            characterDocument.career.Willpower = createCharCustomClassWindow.Stats.WorkingStats.LiveWillpower;
+            characterDocument.career.Agility = createCharCustomClassWindow.Stats.WorkingStats.LiveAgility;
+            characterDocument.career.Endurance = createCharCustomClassWindow.Stats.WorkingStats.LiveEndurance;
+            characterDocument.career.Personality = createCharCustomClassWindow.Stats.WorkingStats.LivePersonality;
+            characterDocument.career.Speed = createCharCustomClassWindow.Stats.WorkingStats.LiveSpeed;
+            characterDocument.career.Luck = createCharCustomClassWindow.Stats.WorkingStats.LiveLuck;
+
+            SetChooseBioWindow();
+        }
+
+        void CreateCharChooseBioWindow_OnClose()
+        {
+            if (!createCharChooseBioWindow.Cancelled)
+            {
+                if (!createCharChooseBioWindow.ChoseQuestions)
+                {
+                    // Choose answers at random
+                    System.Random rand = new System.Random(System.DateTime.Now.Millisecond);
+                    if (!characterDocument.isCustom)
+                    {
+                        characterDocument.classIndex = createCharClassSelectWindow.SelectedClassIndex;
+                    }
+                    BiogFile autoBiog = new BiogFile(characterDocument);
+                    for (int i = 0; i < autoBiog.Questions.Length; i++)
+                    {
+                        List<BiogFile.Answer> answers;
+                        answers = autoBiog.Questions[i].Answers;
+                        int index = rand.Next(0, answers.Count);
+                        for (int j = 0; j < answers[index].Effects.Count; j++)
+                        {
+                            autoBiog.AddEffect(answers[index].Effects[j], i);
+                        }
+                    }
+                    // Show reputation changes
+                    autoBiog.DigestRepChanges();
+                    DaggerfallMessageBox messageBox = new DaggerfallMessageBox(uiManager, createCharChooseBioWindow);
+                    messageBox.SetTextTokens(CreateCharBiography.reputationToken, autoBiog);
+                    messageBox.ClickAnywhereToClose = true;
+                    messageBox.Show();
+                    messageBox.OnClose += ReputationBox_OnClose;
+
+                    characterDocument.biographyEffects = autoBiog.AnswerEffects;
+                    characterDocument.backStory = autoBiog.GenerateBackstory(characterDocument.classIndex);
+                }
+                else
+                {
+                    SetBiographyWindow();
+                }
+            }
+            else
+            {
+                SetClassSelectWindow();
+            }
+        }
+
+        private void ReputationBox_OnClose()
+        {
+            SetNameSelectWindow();
+        }
+
+        void CreateCharBiographyWindow_OnClose()
+        {
+            if (!createCharBiographyWindow.Cancelled)
+            {
+                characterDocument.backStory = createCharBiographyWindow.BackStory;
+                characterDocument.biographyEffects = createCharBiographyWindow.PlayerEffects;
+                SetNameSelectWindow();
+            }
+            else
+            {
+                SetChooseBioWindow();
             }
         }
 
@@ -285,7 +433,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             }
             else
             {
-                SetClassSelectWindow();
+                SetChooseBioWindow();
             }
         }
 

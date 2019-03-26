@@ -1,10 +1,10 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
 // Original Author: Gavin Clayton (interkarma@dfworkshop.net)
-// Contributors:    
+// Contributors:    Hazelnut
 // 
 // Notes:
 //
@@ -13,9 +13,13 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Unity.Collections;
 using DaggerfallConnect;
 using DaggerfallConnect.Arena2;
 using DaggerfallConnect.Utility;
+using DaggerfallWorkshop.Game.Entity;
+using DaggerfallWorkshop.Game.Questing;
+using DaggerfallWorkshop.Game.Items;
 
 namespace DaggerfallWorkshop
 {
@@ -136,10 +140,12 @@ namespace DaggerfallWorkshop
         public int record;                      // Original record
         public int frame;                       // Original frame
         public bool hasAlpha;                   // Original loaded with alpha cutout
+        public int alphaIndex;                  // Original alpha index (usually 0)
         public int width;                       // Original image width
         public int height;                      // Original image height
         public DFBitmap dfBitmap;               // Original indexed bitmap
         public Texture2D texture;               // Generated texture
+        public Texture2D[] animatedTextures;    // Array of animation frames if this is an animated texture
         public DFPosition offset;               // Custom Daggerfall offset position for paper doll inventory, etc.
         public DFSize scale;                    // Custom Daggerfall size for scaling sprites
         public DFSize size;                     // Size of image
@@ -184,12 +190,37 @@ namespace DaggerfallWorkshop
         public int AttackSound;                     // Index of enemy "attack" sound
         public int SightModifier;                   // +/- range of vision for acute/impaired sight
         public int HearingModifier;                 // +/- range of hearing for acute/impaired hearing
-        public MetalTypes MinMetalToHit;            // Minimum metal type required to hit enemy
-        public int MinDamage;                       // Minimum damage per hit
-        public int MaxDamage;                       // Maximum damage per hit
+        public WeaponMaterialTypes MinMetalToHit;   // Minimum metal type required to hit enemy
+        public int MinDamage;                       // Minimum damage per first hit of attack
+        public int MaxDamage;                       // Maximum damage per first hit of attack
+        public int MinDamage2;                      // Minimum damage per second hit of attack
+        public int MaxDamage2;                      // Maximum damage per second hit of attack
+        public int MinDamage3;                      // Minimum damage per third hit of attack
+        public int MaxDamage3;                      // Maximum damage per third hit of attack
         public int MinHealth;                       // Minimum health
         public int MaxHealth;                       // Maximum health
+        public int Level;                           // Level
+        public int ArmorValue;                      // Armor value
+        public bool ParrySounds;                    // Plays parry sounds when attacks against this enemy miss
+        public int MapChance;                       // Chance of having a map
         public string LootTableKey;                 // Key to use when generating loot
+        public int Weight;                          // Weight of this enemy. Affects chance of being knocked back by a hit.
+        public bool CastsMagic;                     // Whether this enemy casts magic. Only used for enemy classes.
+        public bool SeesThroughInvisibility;        // Whether this enemy sees through the shade, chameleon and invisibility effects.
+        public int SoulPts;                         // Number of enchantment points in a trapped soul of this enemy
+        public int[] PrimaryAttackAnimFrames;       // Animation sequence to play when doing primary attack
+        public int ChanceForAttack2;                // Chance to use PrimaryAttackAnimFrames2 for an attack
+        public int[] PrimaryAttackAnimFrames2;      // Alternate animation sequence to play when doing primary attack
+        public int ChanceForAttack3;                // Chance to use PrimaryAttackAnimFrames3 for an attack
+        public int[] PrimaryAttackAnimFrames3;      // Alternate animation sequence to play when doing primary attack
+        public int ChanceForAttack4;                // Chance to use PrimaryAttackAnimFrames3 for an attack
+        public int[] PrimaryAttackAnimFrames4;      // Alternate animation sequence to play when doing primary attack
+        public int ChanceForAttack5;                // Chance to use PrimaryAttackAnimFrames3 for an attack
+        public int[] PrimaryAttackAnimFrames5;      // Alternate animation sequence to play when doing primary attack
+        public int[] RangedAttackAnimFrames;        // Animation sequence to play when doing bow & arrow attack
+        public bool HasSpellAnimation;              // Whether or not this character has specific animations for casting spells
+        public int[] SpellAnimFrames;               // Animation sequence to play when doing a spell cast
+        public MobileTeams Team;                    // Team that this enemy uses if enemy in-fighting is on
     }
 
     /// <summary>
@@ -228,6 +259,7 @@ namespace DaggerfallWorkshop
         public int[] Indices;                       // Index array describing the triangles of this mesh
         public SubMeshData[] SubMeshes;             // Data for each SubMesh, grouped by texture
         public ModelDoor[] Doors;                   // Doors found in this model
+        //public DFMesh.DFPlane[] DungeonFloors;      // Dungeon floor planes in this model
 
         /// <summary>
         /// Defines submesh data.
@@ -270,21 +302,52 @@ namespace DaggerfallWorkshop
     }
 
     /// <summary>
-    /// Defines a static door inside a scene.
+    /// Defines a static door for hit tests inside a scene.
     /// </summary>
     [Serializable]
     public struct StaticDoor
     {
+        public int buildingKey;                     // Unique key of building this door will access
         public Vector3 ownerPosition;               // World position of door owner
         public Quaternion ownerRotation;            // Rotation of door owner
         public Matrix4x4 buildingMatrix;            // Matrix of individual building owning this door
         public DoorTypes doorType;                  // Type of door
         public int blockIndex;                      // Block index in BLOCKS.BSA
-        public int recordIndex;                     // Record index of interior
+        public int recordIndex;                     // Record index for interior
         public int doorIndex;                       // Door index for individual building/record (most buildings have only 1-2 doors)
         public Vector3 centre;                      // Door centre in model space
         public Vector3 size;                        // Door size in model space
         public Vector3 normal;                      // Normal pointing away from door
+    }
+
+    /// <summary>
+    /// Defines a static building for hit tests inside scene.
+    /// </summary>
+    [Serializable]
+    public struct StaticBuilding
+    {
+        public int buildingKey;                     // Building key unique to parent location
+        public Matrix4x4 modelMatrix;               // Matrix of individual model for this building
+        public int recordIndex;                     // Record index for building
+        public Vector3 centre;                      // Building centre in model space
+        public Vector3 size;                        // Building size
+    }
+
+    /// <summary>
+    /// Detailed information about a building for directory lookups.
+    /// </summary>
+    [Serializable]
+    public struct BuildingSummary
+    {
+        public int buildingKey;                         // Building key unique to parent location
+        public int NameSeed;                            // Name seed of building - not set at block level
+        public int FactionId;                           // Faction ID of building
+        public DFLocation.BuildingTypes BuildingType;   // Type of building
+        public int Quality;                             // Quality of building
+        public Vector3 Position;                        // Position of building
+        public Vector3 Rotation;                        // Rotation of building
+        public Matrix4x4 Matrix;                        // Transform matrix of building
+        public uint ModelID;                            // Numerical model ID of building in ARCH3D.BSA - 0 means no model found
     }
 
     /// <summary>
@@ -307,24 +370,99 @@ namespace DaggerfallWorkshop
         public float averageHeight;                 // Average height of terrain for location placement
         public float maxHeight;                     // Max height of terrain for location placement
         public Rect locationRect;                   // Rect of location tiles in sample are
-        
+
         [HideInInspector, NonSerialized]
-        public TilemapSample[,] tilemapSamples;     // Tilemap samples for terrain
+        public byte[,] tilemapSamples;              // Tilemap samples for terrain
 
         [HideInInspector, NonSerialized]
         public float[,] heightmapSamples;           // Heightmap samples for terrain - indexed [y,x] for Terrain.SetHeights
+
+        [HideInInspector, NonSerialized]
+        public NativeArray<float> heightmapData;    // Heightmap data for terrain jobs (unmanaged memory)
+
+        [HideInInspector, NonSerialized]
+        public NativeArray<byte> tilemapData;       // Tilemap data for terrain jobs (unmanaged memory)
+
+        [HideInInspector, NonSerialized]
+        public NativeArray<Color32> tileMap;        // Tilemap color data for shader (unmanaged memory)
+
+        [HideInInspector, NonSerialized]
+        public NativeArray<float> avgMaxHeight;     // Average and max height of terrain for location placement (unmanaged memory)
+
+        [HideInInspector, NonSerialized]
+        public List<IDisposable> nativeArrayList;   // List of temp working native arrays (unmanaged memory) for disposal when jobs complete
     }
 
     /// <summary>
-    /// Describes a single tilemap sample.
+    /// Full details of a quest site generated by Place resource.
+    /// A site has different meanings based on type:
+    ///  * Town - Exterior arrangement of RMB blocks. Can be fixed or random.
+    ///  * Dungeon - Interior arrangement of RDB blocks. Can be fixed or random.
+    ///  * Building - Interior of a specific RMB block record. Random based on building type.
+    ///  
+    ///  NOTES:
+    ///   * My original design of SiteDetails and QuestMarker would only assign one target resource per marker.
+    ///   * This was incompatible with quests like M0B00Y16 where both Giant and the NPC to rescue will spawn on same marker.
+    ///   * New design is to select a random spawn marker and item marker at time of site generation.
+    ///   * All Foe/Person resources placed at same site will share the one spawn marker.
+    ///   * All Item resources placed at same site will share the one item marker.
+    ///   * This design also solves the problem of over-allocation by multiple quests to same site.
+    ///   * Suspect Daggerfall does something similar but selects a random marker from pool for each spawn/item placed.
+    ///   * Will continue to refine this design as quest system progresses.
     /// </summary>
-    public struct TilemapSample
+    [Serializable]
+    public struct SiteDetails
     {
-        public int record;                          // Record index into texture atlas
-        public bool flip;                           // Flip texture UVs
-        public bool rotate;                         // Rotate texture UVs
-        public bool location;                       // True if location tile present
-        public int nature;                          // Index of nature flat at this point (0 is nothing)
+        public ulong questUID;                      // Quest who owns this site
+        public SiteTypes siteType;                  // Type of site
+        public int mapId;                           // MapID of this location
+        public uint locationId;                     // LocationID of this location
+        public string regionName;                   // Name of region containing this location
+        public string locationName;                 // Name of exterior location itself
+        public int buildingKey;                     // Key of building site in this location
+        public string buildingName;                 // Name of target building, e.g. 'The Odd Blades'
+        public QuestMarker[] questSpawnMarkers;     // Array of quest spawn markers (Foe, Person resources) found in site, can be null or empty
+        public QuestMarker[] questItemMarkers;      // Array of quest item markers (Item resource) found in site, can be null or empty
+        public int selectedQuestSpawnMarker;        // Quest spawn marker randomly chosen at time of site generation
+        public int selectedQuestItemMarker;         // Quest item marker randomly chosen at time of site generation
+        public int magicNumberIndex;                // Static index specified by fixed places only (one-based)
+    }
+
+    /// <summary>
+    /// Site links are reserved by "create npc at" action.
+    /// Creates a bridge between world and quest markers for layout classes.
+    /// For example, quest NPCs might need to be injected to a certain building or dungeon interior.
+    /// The same mechanism is used to place quest items and foes for the player.
+    /// SiteLink contains enough information for external classes to determine if they belong to that site.
+    /// If layout classes find a matching SiteLink, they will deploy any assigned QuestMarkers assigned to site.
+    /// </summary>
+    [Serializable]
+    public struct SiteLink
+    {
+        public ulong questUID;                      // Quest which reserved link
+        public Symbol placeSymbol;                  // Symbol of Place/site target
+        public SiteTypes siteType;                  // Type of site involved in quest
+        public int mapId;                           // MapID of site location in world
+        public int buildingKey;                     // Key for building site types
+        public int magicNumberIndex;                // Static index specified by fixed places only (one-based)
+    }
+
+    /// <summary>
+    /// Describes a single quest marker for NPC, item, etc.
+    /// These markers are used to place quest resources like Person, Foe, Item, etc.
+    /// </summary>
+    [Serializable]
+    public struct QuestMarker
+    {
+        public ulong questUID;                      // Quest who owns this marker
+        public Symbol placeSymbol;                  // Symbol of place who owns this marker
+        public List<Symbol> targetResources;        // Resources assigned to this marker, can be null or empty
+        public MarkerTypes markerType;              // Type of marker this represents
+        public Vector3 flatPosition;                // Position of marker flat in block layout
+        public int dungeonX;                        // Dungeon block X position in location
+        public int dungeonZ;                        // Dungeon block Z position in location
+        public int buildingKey;                     // Building key if a building site
+        public ulong markerID;                      // Marker ID for dungeon markers
     }
 
     /// <summary>
@@ -348,5 +486,67 @@ namespace DaggerfallWorkshop
         public int BK;      // Book
         public int M2;      // MiscellaneousIngredients2
         public int RL;      // ReligiousItems
+    }
+
+    /// <summary>
+    /// A single global variable.
+    /// </summary>
+    public struct GlobalVar
+    {
+        public int index;
+        public string name;
+        public bool value;
+    }
+
+    [Serializable]
+    public struct FaceDetails
+    {
+        public ulong questUID;
+        public Symbol targetPerson;
+        public Races targetRace;
+        public Genders gender;
+        public int faceIndex;
+        public int factionFaceIndex;
+    }
+
+    /// <summary>
+    /// List of starting spells for a specific career.
+    /// Custom careers use the same starting spells as Spellsword (CareerIndex=1) if any primary or major skills are a magic skill)
+    /// </summary>
+    [Serializable]
+    public struct CareerStartingSpells
+    {
+        public int CareerIndex;                 // Career index of starting character - referenced by character creation
+        public string CareerName;               // Display name of career - only used to make file more human readable
+        public StartingSpell[] SpellsList;      // List of starting spells for this career
+    }
+
+    /// <summary>
+    /// A single starting spell.
+    /// </summary>
+    [Serializable]
+    public struct StartingSpell
+    {
+        public int SpellID;                     // ID of spell inside SPELLS.STD - used to reference spell itself
+        public string SpellName;                // Display name of spell - only used to make file more human readable
+    }
+
+    public struct Border<T>
+    {
+        public Border(T common)
+        {
+            Fill = Top = Bottom = Left = Right = TopLeft =
+                TopRight = BottomLeft = BottomRight = common;
+        }
+
+        public T Fill;
+        public T Top;
+        public T Bottom;
+        public T Left;
+        public T Right;
+        public T TopLeft;
+        public T TopRight;
+        public T BottomLeft;
+        public T BottomRight;
     }
 }

@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -26,8 +26,10 @@ namespace DaggerfallWorkshop
     /// </summary>
     public class WorldTime : MonoBehaviour
     {
+        [HideInInspector]
         public DaggerfallDateTime DaggerfallDateTime = new DaggerfallDateTime();
-        public float TimeScale = 10f;
+        public float RaiseTimeInSeconds = 0;
+        public float TimeScale = 12f;
         public bool ShowDebugString = false;
 
         int lastHour;
@@ -35,6 +37,12 @@ namespace DaggerfallWorkshop
         int lastMonth;
         int lastYear;
 
+        /// <summary>
+        /// Get the current world time object.
+        /// Notes:
+        ///  This is the live world time instance - any changes to this will be reflected in game world
+        ///  If you just want a copy of value use Now.Clone()
+        /// </summary>
         public DaggerfallDateTime Now
         {
             get { return DaggerfallDateTime; }
@@ -51,6 +59,11 @@ namespace DaggerfallWorkshop
 
         void Update()
         {
+            if (RaiseTimeInSeconds > 0)
+            {
+                DaggerfallDateTime.RaiseTime(RaiseTimeInSeconds);
+                RaiseTimeInSeconds = 0;
+            }
             DaggerfallDateTime.RaiseTime(Time.deltaTime * TimeScale);
             RaiseEvents();
         }

@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -119,7 +119,7 @@ namespace DaggerfallWorkshop.Game
         {
             if (deathInProgress)
             {
-                DaggerfallUI.Instance.ClearFade();
+                DaggerfallUI.Instance.FadeBehaviour.ClearFade();
                 deathInProgress = false;
                 InputManager.Instance.IsPaused = false;
                 ResetCamera();
@@ -158,10 +158,42 @@ namespace DaggerfallWorkshop.Game
             startCameraHeight = mainCamera.transform.localPosition.y;
             targetCameraHeight = playerController.height - (playerController.height * 1.25f);
             currentCameraHeight = startCameraHeight;
-            DaggerfallUI.Instance.FadeHUDToBlack(FadeDuration);
+            DaggerfallUI.Instance.FadeBehaviour.FadeHUDToBlack(FadeDuration);
+
+            // There are 3 pain-like sounds for each race/gender. The third one, used here, sounds like
+            // it may have been meant for when the player dies.
+            SoundClips sound = GetRaceGenderPain3Sound(playerEntity.Race, playerEntity.Gender);
+
+            if (DaggerfallUI.Instance.DaggerfallAudioSource)
+                DaggerfallUI.Instance.DaggerfallAudioSource.PlayOneShot(sound, 0);
 
             if (OnPlayerDeath != null)
                 OnPlayerDeath(this, null);
+        }
+
+        SoundClips GetRaceGenderPain3Sound(Races race, Genders gender)
+        {
+            switch (race)
+            {
+                case Races.Breton:
+                    return (playerEntity.Gender == Genders.Male) ? SoundClips.BretonMalePain3 : SoundClips.BretonFemalePain3;
+                case Races.Redguard:
+                    return (playerEntity.Gender == Genders.Male) ? SoundClips.RedguardMalePain3 : SoundClips.RedguardFemalePain3;
+                case Races.Nord:
+                    return (playerEntity.Gender == Genders.Male) ? SoundClips.NordMalePain3 : SoundClips.NordFemalePain3;
+                case Races.DarkElf:
+                    return (playerEntity.Gender == Genders.Male) ? SoundClips.DarkElfMalePain3 : SoundClips.DarkElfFemalePain3;
+                case Races.HighElf:
+                    return (playerEntity.Gender == Genders.Male) ? SoundClips.HighElfMalePain3 : SoundClips.HighElfFemalePain3;
+                case Races.WoodElf:
+                    return (playerEntity.Gender == Genders.Male) ? SoundClips.WoodElfMalePain3 : SoundClips.WoodElfFemalePain3;
+                case Races.Khajiit:
+                    return (playerEntity.Gender == Genders.Male) ? SoundClips.KhajiitMalePain3 : SoundClips.KhajiitFemalePain3;
+                case Races.Argonian:
+                    return (playerEntity.Gender == Genders.Male) ? SoundClips.ArgonianMalePain3 : SoundClips.ArgonianFemalePain3;
+                default:
+                    return SoundClips.None;
+            }
         }
 
         #endregion

@@ -1,18 +1,24 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
 // Original Author: Gavin Clayton (interkarma@dfworkshop.net)
-// Contributors:    
-// 
+// Contributors: InconsolableCellist
+//
 // Notes:
 //
 
 using System;
+using System.IO;
+using System.Collections.Generic;
 using UnityEngine;
 using DaggerfallWorkshop.Game.Entity;
 using DaggerfallConnect.FallExe;
+using DaggerfallConnect.Arena2;
+using DaggerfallWorkshop.Utility;
+using DaggerfallWorkshop.Utility.AssetInjection;
+using DaggerfallWorkshop.Game.Utility;
 
 namespace DaggerfallWorkshop.Game.Items
 {
@@ -27,35 +33,35 @@ namespace DaggerfallWorkshop.Game.Items
         const int firstFemaleArchive = 245;
         const int firstMaleArchive = 249;
 
-        static ArmorMaterialTypes[] armorMaterialList = new ArmorMaterialTypes[]
-        {
-            ArmorMaterialTypes.Leather,
-            ArmorMaterialTypes.Chain,
-            ArmorMaterialTypes.Iron,
-            ArmorMaterialTypes.Steel,
-            ArmorMaterialTypes.Silver,
-            ArmorMaterialTypes.Elven,
-            ArmorMaterialTypes.Dwarven,
-            ArmorMaterialTypes.Mithril,
-            ArmorMaterialTypes.Adamantium,
-            ArmorMaterialTypes.Ebony,
-            ArmorMaterialTypes.Orcish,
-            ArmorMaterialTypes.Daedric,
-        };
+        // This array is used to pick random material values.
+        // The array is traversed, subtracting each value from a sum until the sum is less than the next value.
+        // Steel through Daedric, or Iron if sum is less than the first value.
+        static readonly byte[] materialsByModifier = { 64, 128, 10, 21, 13, 8, 5, 3, 2, 5 };
 
-        static WeaponMaterialTypes[] weaponMaterialList = new WeaponMaterialTypes[]
-        {
-            WeaponMaterialTypes.Iron,
-            WeaponMaterialTypes.Steel,
-            WeaponMaterialTypes.Silver,
-            WeaponMaterialTypes.Elven,
-            WeaponMaterialTypes.Dwarven,
-            WeaponMaterialTypes.Mithril,
-            WeaponMaterialTypes.Adamantium,
-            WeaponMaterialTypes.Ebony,
-            WeaponMaterialTypes.Orcish,
-            WeaponMaterialTypes.Daedric,
-        };
+        // Weight multipliers by material type. Iron through Daedric. Weight is baseWeight * value / 4.
+        static readonly short[] weightMultipliersByMaterial = { 4, 5, 4, 4, 3, 4, 4, 2, 4, 5 };
+
+        // Value multipliers by material type. Iron through Daedric. Value is baseValue * ( 3 * value).
+        static readonly short[] valueMultipliersByMaterial = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512 };
+
+        // Condition multipliers by material type. Iron through Daedric. MaxCondition is baseMaxCondition * value / 4.
+        static readonly short[] conditionMultipliersByMaterial = { 4, 4, 6, 8, 12, 16, 20, 24, 28, 32 };
+
+        // Enchantment point multipliers by material type. Iron through Daedric. Enchantment points is baseEnchanmentPoints * value / 4.
+        static readonly short[] enchantmentPointMultipliersByMaterial = { 3, 4, 7, 5, 6, 5, 7, 8, 10, 12 };
+
+        // Enchantment point/gold value data for item powers
+        static readonly int[] extraSpellPtsEnchantPts = { 0x1F4, 0x1F4, 0x1F4, 0x1F4, 0xC8, 0xC8, 0xC8, 0x2BC, 0x320, 0x384, 0x3E8 };
+        static readonly int[] potentVsEnchantPts = { 0x320, 0x384, 0x3E8, 0x4B0 };
+        static readonly int[] regensHealthEnchantPts = { 0x0FA0, 0x0BB8, 0x0BB8 };
+        static readonly int[] vampiricEffectEnchantPts = { 0x7D0, 0x3E8 };
+        static readonly int[] increasedWeightAllowanceEnchantPts = { 0x190, 0x258 };
+        static readonly int[] improvesTalentsEnchantPts = { 0x1F4, 0x258, 0x258 };
+        static readonly int[] goodRepWithEnchantPts = { 0x3E8, 0x3E8, 0x3E8, 0x3E8, 0x3E8, 0x1388 };
+        static readonly int[][] enchantmentPtsForItemPowerArrays = { null, null, null, extraSpellPtsEnchantPts, potentVsEnchantPts, regensHealthEnchantPts,
+                                                                    vampiricEffectEnchantPts, increasedWeightAllowanceEnchantPts, null, null, null, null, null,
+                                                                    improvesTalentsEnchantPts, goodRepWithEnchantPts};
+        static readonly ushort[] enchantmentPointCostsForNonParamTypes = { 0, 0x0F448, 0x0F63C, 0x0FF9C, 0x0FD44, 0, 0, 0, 0x384, 0x5DC, 0x384, 0x64, 0x2BC };
 
         private enum BodyMorphology
         {
@@ -65,8 +71,7 @@ namespace DaggerfallWorkshop.Game.Items
             Khajiit = 3,
         }
 
-        static DyeColors[] clothingDyes = new DyeColors[]
-        {
+        static DyeColors[] clothingDyes = {
             DyeColors.Blue,
             DyeColors.Grey,
             DyeColors.Red,
@@ -79,21 +84,6 @@ namespace DaggerfallWorkshop.Game.Items
             DyeColors.Green,
         };
 
-        static DyeColors[] metalDyes = new DyeColors[]
-        {
-            DyeColors.Iron,
-            DyeColors.Steel,
-            DyeColors.Chain,
-            DyeColors.Unchanged,
-            DyeColors.SilverOrElven,
-            DyeColors.Dwarven,
-            DyeColors.Mithril,
-            DyeColors.Adamantium,
-            DyeColors.Ebony,
-            DyeColors.Orcish,
-            DyeColors.Daedric,
-        };
-
         #endregion
 
         #region Public Methods
@@ -103,67 +93,76 @@ namespace DaggerfallWorkshop.Game.Items
             return clothingDyes[UnityEngine.Random.Range(0, clothingDyes.Length)];
         }
 
-        public static DyeColors RandomMetalDye()
-        {
-            return metalDyes[UnityEngine.Random.Range(0, metalDyes.Length)];
-        }
-
         /// <summary>
-        /// Gets a random quality index within range.
-        /// This is a kludge way of distributing material types for now.
-        /// </summary>
-        /// <param name="playerLevel">Player level.</param>
-        /// <param name="peakLevel">Level at which weight is removed.</param>
-        /// <param name="weight">Negative index weight per level below peak.</param>
-        /// <returns>Weighted index.</returns>
-        public static int RandomQualityIndex(int playerLevel, int min, int max, int peakLevel = 10, float weight = 0.7f)
-        {
-            // Start with equal chance for any index
-            int index = UnityEngine.Random.Range(min, max);
-
-            // Weight pulls quality down below peak level
-            int bias = 0;
-            if (playerLevel < peakLevel)
-                bias = (int)((peakLevel - playerLevel) * weight);
-
-            // Final material index
-            index = Mathf.Clamp(index - bias, min, max);
-
-            return index;
-        }
-
-        /// <summary>
-        /// Gets a random weapon material.
-        /// This is a kludge way of distributing material types for now.
+        /// Gets a random material based on player level.
         /// </summary>
         /// <param name="playerLevel">Player level.</param>
         /// <returns>WeaponMaterialTypes.</returns>
-        public static WeaponMaterialTypes RandomWeaponMaterial(int playerLevel)
+
+        public static WeaponMaterialTypes RandomMaterial(int playerLevel)
         {
-            return weaponMaterialList[RandomQualityIndex(playerLevel, 0, weaponMaterialList.Length)];
+            int levelModifier = (playerLevel - 10);
+
+            if (levelModifier >= 0)
+                levelModifier *= 2;
+            else
+                levelModifier *= 4;
+
+            int randomModifier = UnityEngine.Random.Range(0, 256);
+
+            int combinedModifiers = levelModifier + randomModifier;
+            combinedModifiers = Mathf.Clamp(combinedModifiers, 0, 256);
+
+            int material = 0; // initialize to iron
+
+            // The higher combinedModifiers is, the higher the material
+            while (materialsByModifier[material] < combinedModifiers)
+            {
+                combinedModifiers -= materialsByModifier[material++];
+            }
+
+            return (WeaponMaterialTypes)(material);
         }
 
         /// <summary>
-        /// Gets a random armor material.
-        /// This is a kludge way of distributing material types for now.
+        /// Gets a random armor material based on player level.
         /// </summary>
         /// <param name="playerLevel">Player level.</param>
         /// <returns>ArmorMaterialTypes.</returns>
         public static ArmorMaterialTypes RandomArmorMaterial(int playerLevel)
         {
-            return armorMaterialList[RandomQualityIndex(playerLevel, 0, armorMaterialList.Length)];
+            // Random armor material
+            int roll = Dice100.Roll();
+
+            if (roll >= 70)
+            {
+                if (roll >= 90)
+                {
+                    WeaponMaterialTypes plateMaterial = RandomMaterial(playerLevel);
+                    return (ArmorMaterialTypes)(0x0200 + plateMaterial);
+                }
+                else
+                    return ArmorMaterialTypes.Chain;
+            }
+            else
+                return ArmorMaterialTypes.Leather;
         }
 
         /// <summary>
         /// Creates a generic item from group and template index.
         /// </summary>
         /// <param name="itemGroup">Item group.</param>
-        /// <param name="itemIndex">Template index.</param>
+        /// <param name="templateIndex">Template index.</param>
         /// <returns>DaggerfallUnityItem.</returns>
         public static DaggerfallUnityItem CreateItem(ItemGroups itemGroup, int templateIndex)
         {
             // Create item
             int groupIndex = DaggerfallUnity.Instance.ItemHelper.GetGroupIndex(itemGroup, templateIndex);
+            if (groupIndex == -1)
+            {
+                Debug.LogErrorFormat("ItemBuilder.CreateItem() encountered an item with an invalid GroupIndex. Check you're passing 'template index' matching a value in ItemEnums - e.g. (int)Weapons.Dagger NOT a 'group index' (e.g. 0).");
+                return null;
+            }
             DaggerfallUnityItem newItem = new DaggerfallUnityItem(itemGroup, groupIndex);
 
             return newItem;
@@ -174,14 +173,18 @@ namespace DaggerfallWorkshop.Game.Items
         /// </summary>
         /// <param name="item">Item type to generate.</param>
         /// <param name="race">Race of player.</param>
-        /// <param name="variant">Variant to use.</param>
+        /// <param name="variant">Variant to use. If not set, a random variant will be selected.</param>
         /// <param name="dye">Dye to use</param>
         /// <returns>DaggerfallUnityItem.</returns>
-        public static DaggerfallUnityItem CreateMensClothing(MensClothing item, Races race, int variant = 0, DyeColors dye = DyeColors.Blue)
+        public static DaggerfallUnityItem CreateMensClothing(MensClothing item, Races race, int variant = -1, DyeColors dye = DyeColors.Blue)
         {
             // Create item
             int groupIndex = DaggerfallUnity.Instance.ItemHelper.GetGroupIndex(ItemGroups.MensClothing, (int)item);
             DaggerfallUnityItem newItem = new DaggerfallUnityItem(ItemGroups.MensClothing, groupIndex);
+
+            // Random variant
+            if (variant < 0)
+                variant = UnityEngine.Random.Range(0, newItem.ItemTemplate.variants);
 
             // Set race, variant, dye
             SetRace(newItem, race);
@@ -196,14 +199,18 @@ namespace DaggerfallWorkshop.Game.Items
         /// </summary>
         /// <param name="item">Item type to generate.</param>
         /// <param name="race">Race of player.</param>
-        /// <param name="variant">Variant to use.</param>
+        /// <param name="variant">Variant to use. If not set, a random variant will be selected.</param>
         /// <param name="dye">Dye to use</param>
         /// <returns>DaggerfallUnityItem.</returns>
-        public static DaggerfallUnityItem CreateWomensClothing(WomensClothing item, Races race, int variant = 0, DyeColors dye = DyeColors.Blue)
+        public static DaggerfallUnityItem CreateWomensClothing(WomensClothing item, Races race, int variant = -1, DyeColors dye = DyeColors.Blue)
         {
             // Create item
             int groupIndex = DaggerfallUnity.Instance.ItemHelper.GetGroupIndex(ItemGroups.WomensClothing, (int)item);
             DaggerfallUnityItem newItem = new DaggerfallUnityItem(ItemGroups.WomensClothing, groupIndex);
+
+            // Random variant
+            if (variant < 0)
+                variant = UnityEngine.Random.Range(0, newItem.ItemTemplate.variants);
 
             // Set race, variant, dye
             SetRace(newItem, race);
@@ -218,7 +225,7 @@ namespace DaggerfallWorkshop.Game.Items
         /// </summary>
         /// <param name="gender">Gender of player</param>
         /// <returns>DaggerfallUnityItem.</returns>
-        public static DaggerfallUnityItem CreateRandomClothing(Genders gender)
+        public static DaggerfallUnityItem CreateRandomClothing(Genders gender, Races race)
         {
             // Create random clothing by gender
             DaggerfallUnityItem newItem;
@@ -234,6 +241,7 @@ namespace DaggerfallWorkshop.Game.Items
                 int groupIndex = UnityEngine.Random.Range(0, enumArray.Length);
                 newItem = new DaggerfallUnityItem(ItemGroups.WomensClothing, groupIndex);
             }
+            SetRace(newItem, race);
 
             // Random dye colour
             newItem.dyeColor = RandomClothingDye();
@@ -242,6 +250,27 @@ namespace DaggerfallWorkshop.Game.Items
             SetVariant(newItem, UnityEngine.Random.Range(0, newItem.TotalVariants));
 
             return newItem;
+        }
+
+        /// <summary>
+        /// Creates a new random book
+        /// </summary>
+        /// <returns>DaggerfallUnityItem.</returns>
+        public static DaggerfallUnityItem CreateRandomBook()
+        {
+            Array enumArray = DaggerfallUnity.Instance.ItemHelper.GetEnumArray(ItemGroups.Books);
+            DaggerfallUnityItem book = new DaggerfallUnityItem(ItemGroups.Books, Array.IndexOf(enumArray, Books.Book0));
+
+            // TODO: Change DaggerfallUnityItem.message from int to ushort
+            book.message = DaggerfallUnity.Instance.ItemHelper.getRandomBookID();
+            book.CurrentVariant = UnityEngine.Random.Range(0, book.TotalVariants);
+            // Update item value for this book.
+            BookFile bookFile = new BookFile();
+            string name = BookFile.messageToBookFilename(book.message);
+            if (!BookReplacement.TryImportBook(name, bookFile))
+                bookFile.OpenBook(DaggerfallUnity.Instance.Arena2Path, name);
+            book.value = bookFile.Price;
+            return book;
         }
 
         /// <summary>
@@ -258,10 +287,49 @@ namespace DaggerfallWorkshop.Game.Items
         }
 
         /// <summary>
+        /// Creates a new random gem.
+        /// </summary>
+        /// <returns>DaggerfallUnityItem.</returns>
+        public static DaggerfallUnityItem CreateRandomGem()
+        {
+            Array enumArray = DaggerfallUnity.Instance.ItemHelper.GetEnumArray(ItemGroups.Gems);
+            int groupIndex = UnityEngine.Random.Range(0, enumArray.Length);
+            DaggerfallUnityItem newItem = new DaggerfallUnityItem(ItemGroups.Gems, groupIndex);
+
+            return newItem;
+        }
+
+        /// <summary>
+        /// Creates a new random jewellery.
+        /// </summary>
+        /// <returns>DaggerfallUnityItem.</returns>
+        public static DaggerfallUnityItem CreateRandomJewellery()
+        {
+            Array enumArray = DaggerfallUnity.Instance.ItemHelper.GetEnumArray(ItemGroups.Jewellery);
+            int groupIndex = UnityEngine.Random.Range(0, enumArray.Length);
+            DaggerfallUnityItem newItem = new DaggerfallUnityItem(ItemGroups.Jewellery, groupIndex);
+
+            return newItem;
+        }
+
+        /// <summary>
+        /// Creates a new random drug.
+        /// </summary>
+        /// <returns>DaggerfallUnityItem.</returns>
+        public static DaggerfallUnityItem CreateRandomDrug()
+        {
+            Array enumArray = DaggerfallUnity.Instance.ItemHelper.GetEnumArray(ItemGroups.Drugs);
+            int groupIndex = UnityEngine.Random.Range(0, enumArray.Length);
+            DaggerfallUnityItem newItem = new DaggerfallUnityItem(ItemGroups.Drugs, groupIndex);
+
+            return newItem;
+        }
+
+        /// <summary>
         /// Generates a weapon.
         /// </summary>
         /// <param name="weapon"></param>
-        /// <param name="material"></param>
+        /// <param name="material">Ignored for arrows</param>
         /// <returns></returns>
         public static DaggerfallUnityItem CreateWeapon(Weapons weapon, WeaponMaterialTypes material)
         {
@@ -269,10 +337,17 @@ namespace DaggerfallWorkshop.Game.Items
             int groupIndex = DaggerfallUnity.Instance.ItemHelper.GetGroupIndex(ItemGroups.Weapons, (int)weapon);
             DaggerfallUnityItem newItem = new DaggerfallUnityItem(ItemGroups.Weapons, groupIndex);
 
-            // Adjust material
-            newItem.nativeMaterialValue = (int)material;
-            newItem.dyeColor = DaggerfallUnity.Instance.ItemHelper.GetWeaponDyeColor(material);
-
+            if (weapon == Weapons.Arrow)
+            {   // Handle arrows
+                newItem.stackCount = UnityEngine.Random.Range(1, 20 + 1);
+                newItem.currentCondition = 0; // not sure if this is necessary, but classic does it
+            }
+            else
+            {   // Adjust material
+                newItem.nativeMaterialValue = (int)material;
+                newItem = SetItemPropertiesByMaterial(newItem, material);
+                newItem.dyeColor = DaggerfallUnity.Instance.ItemHelper.GetWeaponDyeColor(material);
+            }
             return newItem;
         }
 
@@ -283,15 +358,24 @@ namespace DaggerfallWorkshop.Game.Items
         /// <returns>DaggerfallUnityItem</returns>
         public static DaggerfallUnityItem CreateRandomWeapon(int playerLevel)
         {
-            // Create random weapon type (excluding bows and arrows for now)
+            // Create random weapon type
             Array enumArray = DaggerfallUnity.Instance.ItemHelper.GetEnumArray(ItemGroups.Weapons);
-            int groupIndex = UnityEngine.Random.Range(0, enumArray.Length - 3);
+            int groupIndex = UnityEngine.Random.Range(0, enumArray.Length);
             DaggerfallUnityItem newItem = new DaggerfallUnityItem(ItemGroups.Weapons, groupIndex);
 
             // Random weapon material
-            WeaponMaterialTypes material = RandomWeaponMaterial(playerLevel);
+            WeaponMaterialTypes material = RandomMaterial(playerLevel);
             newItem.nativeMaterialValue = (int)material;
+
+            newItem = SetItemPropertiesByMaterial(newItem, material);
             newItem.dyeColor = DaggerfallUnity.Instance.ItemHelper.GetWeaponDyeColor(material);
+
+            // Handle arrows
+            if (groupIndex == 18)
+            {
+                newItem.stackCount = UnityEngine.Random.Range(1, 20 + 1);
+                newItem.currentCondition = 0; // not sure if this is necessary, but classic does it
+            }
 
             return newItem;
         }
@@ -299,10 +383,13 @@ namespace DaggerfallWorkshop.Game.Items
         /// <summary>
         /// Generates armour.
         /// </summary>
-        /// <param name="armor">Armor item.</param>
-        /// <param name="material">Material.</param>
+        /// <param name="gender">Gender armor is created for.</param>
+        /// <param name="race">Race armor is created for.</param>
+        /// <param name="armor">Type of armor item to create.</param>
+        /// <param name="material">Material of armor.</param>
+        /// <param name="variant">Visual variant of armor. If -1, a random variant is chosen.</param>
         /// <returns>DaggerfallUnityItem</returns>
-        public static DaggerfallUnityItem CreateArmor(Genders gender, Races race, Armor armor, ArmorMaterialTypes material, int variant = 0)
+        public static DaggerfallUnityItem CreateArmor(Genders gender, Races race, Armor armor, ArmorMaterialTypes material, int variant = -1)
         {
             // Create item
             int groupIndex = DaggerfallUnity.Instance.ItemHelper.GetGroupIndex(ItemGroups.Armor, (int)armor);
@@ -319,10 +406,26 @@ namespace DaggerfallWorkshop.Game.Items
 
             // Adjust material
             newItem.nativeMaterialValue = (int)material;
-            newItem.dyeColor = DaggerfallUnity.Instance.ItemHelper.GetArmorDyeColor(material);
+
+            if (newItem.nativeMaterialValue == (int)ArmorMaterialTypes.Leather)
+                newItem.weightInKg /= 2;
+
+            else if (newItem.nativeMaterialValue == (int)ArmorMaterialTypes.Chain)
+                newItem.value *= 2;
+
+            else if (newItem.nativeMaterialValue >= (int)ArmorMaterialTypes.Iron)
+            {
+                int plateMaterial = newItem.nativeMaterialValue - 0x0200;
+                newItem = SetItemPropertiesByMaterial(newItem, (WeaponMaterialTypes)plateMaterial);
+            }
+
+            newItem.dyeColor = DaggerfallUnity.Instance.ItemHelper.GetArmorDyeColor((ArmorMaterialTypes)newItem.nativeMaterialValue);
 
             // Adjust for variant
-            SetVariant(newItem, variant);
+            if (variant >= 0)
+                SetVariant(newItem, variant);
+            else
+                RandomizeArmorVariant(newItem);
 
             return newItem;
         }
@@ -331,6 +434,8 @@ namespace DaggerfallWorkshop.Game.Items
         /// Creates random armor.
         /// </summary>
         /// <param name="playerLevel">Player level for material type.</param>
+        /// <param name="gender">Gender armor is created for.</param>
+        /// <param name="race">Race armor is created for.</param>
         /// <returns>DaggerfallUnityItem</returns>
         public static DaggerfallUnityItem CreateRandomArmor(int playerLevel, Genders gender, Races race)
         {
@@ -351,19 +456,181 @@ namespace DaggerfallWorkshop.Game.Items
             // Random armor material
             ArmorMaterialTypes material = RandomArmorMaterial(playerLevel);
             newItem.nativeMaterialValue = (int)material;
-            newItem.dyeColor = DaggerfallUnity.Instance.ItemHelper.GetArmorDyeColor(material);
 
-            // Random variant
-            SetVariant(newItem, UnityEngine.Random.Range(0, newItem.TotalVariants));
+            if (newItem.nativeMaterialValue == (int)ArmorMaterialTypes.Leather)
+                newItem.weightInKg /= 2;
+
+            else if (newItem.nativeMaterialValue == (int)ArmorMaterialTypes.Chain)
+                newItem.value *= 2;
+
+            else if (newItem.nativeMaterialValue >= (int)ArmorMaterialTypes.Iron)
+            {
+                int plateMaterial = newItem.nativeMaterialValue - 0x0200;
+                newItem = SetItemPropertiesByMaterial(newItem, (WeaponMaterialTypes)plateMaterial);
+            }
+
+            newItem.dyeColor = DaggerfallUnity.Instance.ItemHelper.GetArmorDyeColor(material);
+            RandomizeArmorVariant(newItem);
 
             return newItem;
+        }
+
+        /// <summary>
+        /// Creates random magic item in same manner as classic.
+        /// </summary>
+        /// <returns>DaggerfallUnityItem</returns>
+        public static DaggerfallUnityItem CreateRandomMagicItem(int playerLevel, Genders gender, Races race)
+        {
+            byte[] itemGroups0 = { 2, 3, 6, 10, 12, 14, 25 };
+            byte[] itemGroups1 = { 2, 3, 6, 12, 25 };
+
+            DaggerfallUnityItem newItem = null;
+
+            // Get the list of magic item templates read from MAGIC.DEF
+            MagicItemsFile magicItemsFile = new MagicItemsFile(Path.Combine(DaggerfallUnity.Instance.Arena2Path, "MAGIC.DEF"));
+            List<MagicItemTemplate> magicItems = magicItemsFile.MagicItemsList;
+
+            // Get the number of non-artifact magic item templates in MAGIC.DEF
+            int numberOfRegularMagicItems = 0;
+            foreach (MagicItemTemplate magicItem in magicItems)
+            {
+                if (magicItem.type == MagicItemTypes.RegularMagicItem)
+                    numberOfRegularMagicItems++;
+            }
+
+            // Choose a random one of the non-artifact magic item templates
+            int chosenItem = UnityEngine.Random.Range(0, numberOfRegularMagicItems);
+
+            // Get the chosen template
+            foreach (MagicItemTemplate magicItem in magicItems)
+            {
+                if (magicItem.type == MagicItemTypes.RegularMagicItem)
+                {
+                    // Proceed when the template is found
+                    if (chosenItem == 0)
+                    {
+                        // Get the item group. The possible groups are determined by the 33rd byte (magicItem.group) of the MAGIC.DEF template being used.
+                        ItemGroups group = 0;
+                        if (magicItem.group == 0)
+                            group = (ItemGroups)itemGroups0[UnityEngine.Random.Range(0, 7)];
+                        else if (magicItem.group == 1)
+                            group = (ItemGroups)itemGroups1[UnityEngine.Random.Range(0, 5)];
+                        else if (magicItem.group == 2)
+                            group = ItemGroups.Weapons;
+
+                        // Create the base item
+                        if (group == ItemGroups.Weapons)
+                        {
+                            newItem = CreateRandomWeapon(playerLevel);
+
+                            // No arrows as enchanted items
+                            while (newItem.GroupIndex == 18)
+                                newItem = CreateRandomWeapon(playerLevel);
+                        }
+                        else if (group == ItemGroups.Armor)
+                            newItem = CreateRandomArmor(playerLevel, gender, race);
+                        else if (group == ItemGroups.MensClothing || group == ItemGroups.WomensClothing)
+                            newItem = CreateRandomClothing(gender, race);
+                        else if (group == ItemGroups.ReligiousItems)
+                            newItem = CreateRandomReligiousItem();
+                        else if (group == ItemGroups.Gems)
+                            newItem = CreateRandomGem();
+                        else // Only other possibility is jewellery
+                            newItem = CreateRandomJewellery();
+
+                        // Replace the regular item name with the magic item name
+                        newItem.shortName = magicItem.name;
+
+                        // Add the enchantments
+                        newItem.legacyMagic = new DaggerfallEnchantment[magicItem.enchantments.Length];
+                        for (int i = 0; i < magicItem.enchantments.Length; ++i)
+                            newItem.legacyMagic[i] = magicItem.enchantments[i];
+
+                        // Set the condition/magic uses
+                        newItem.maxCondition = magicItem.uses;
+                        newItem.currentCondition = magicItem.uses;
+
+                        // Set the value of the item. This is determined by the enchantment point cost/spell-casting cost
+                        // of the enchantments on the item.
+                        int value = 0;
+                        for (int i = 0; i < magicItem.enchantments.Length; ++i)
+                        {
+                            if (magicItem.enchantments[i].type != EnchantmentTypes.None
+                                && magicItem.enchantments[i].type < EnchantmentTypes.ItemDeteriorates)
+                            {
+                                switch (magicItem.enchantments[i].type)
+                                {
+                                    case EnchantmentTypes.CastWhenUsed:
+                                    case EnchantmentTypes.CastWhenHeld:
+                                    case EnchantmentTypes.CastWhenStrikes:
+                                        // Enchantments that cast a spell. The parameter is the spell index in SPELLS.STD.
+                                        value += Formulas.FormulaHelper.GetSpellEnchantPtCost(magicItem.enchantments[i].param);
+                                        break;
+                                    case EnchantmentTypes.RepairsObjects:
+                                    case EnchantmentTypes.AbsorbsSpells:
+                                    case EnchantmentTypes.EnhancesSkill:
+                                    case EnchantmentTypes.FeatherWeight:
+                                    case EnchantmentTypes.StrengthensArmor:
+                                        // Enchantments that provide an effect that has no parameters
+                                        value += enchantmentPointCostsForNonParamTypes[(int)magicItem.enchantments[i].type];
+                                        break;
+                                    case EnchantmentTypes.SoulBound:
+                                        // Bound soul
+                                        MobileEnemy mobileEnemy = GameObjectHelper.EnemyDict[magicItem.enchantments[i].param];
+                                        value += mobileEnemy.SoulPts; // TODO: Not sure about this. Should be negative? Needs to be tested.
+                                        break;
+                                    default:
+                                        // Enchantments that provide a non-spell effect with a parameter (parameter = when effect applies, what enemies are affected, etc.)
+                                        value += enchantmentPtsForItemPowerArrays[(int)magicItem.enchantments[i].type][magicItem.enchantments[i].param];
+                                        break;
+                                }
+                            }
+                        }
+
+                        newItem.value = value;
+
+                        break;
+                    }
+
+                    chosenItem--;
+                }
+            }
+
+            if (newItem == null)
+                throw new Exception("CreateRandomMagicItem() failed to create an item.");
+
+            return newItem;
+        }
+
+        /// <summary>
+        /// Sets properties for a weapon or piece of armor based on its material.
+        /// </summary>
+        /// <param name="item">Item to have its properties modified.</param>
+        /// <param name="material">Material to use to apply properties.</param>
+        /// <returns>DaggerfallUnityItem</returns>
+        public static DaggerfallUnityItem SetItemPropertiesByMaterial(DaggerfallUnityItem item, WeaponMaterialTypes material)
+        {
+            item.value *= 3 * valueMultipliersByMaterial[(int)material];
+            item.weightInKg = CalculateWeightForMaterial(item, material);
+            item.maxCondition *= conditionMultipliersByMaterial[(int)material] / 4;
+            item.currentCondition = item.maxCondition;
+            item.enchantmentPoints *= enchantmentPointMultipliersByMaterial[(int)material] / 4;
+
+            return item;
+        }
+
+        static float CalculateWeightForMaterial(DaggerfallUnityItem item, WeaponMaterialTypes material)
+        {
+            int quarterKgs = (int)(item.weightInKg * 4);
+            float matQuarterKgs = (float)(quarterKgs * weightMultipliersByMaterial[(int)material]) / 4;
+            return Mathf.Round(matQuarterKgs) / 4;
         }
 
         /// <summary>
         /// Creates a random ingredient from any of the ingredient groups.
         /// Passing a non-ingredient group will return null.
         /// </summary>
-        /// <param name="group">Ingedient group.</param>
+        /// <param name="ingredientGroup">Ingredient group.</param>
         /// <returns>DaggerfallUnityItem</returns>
         public static DaggerfallUnityItem CreateRandomIngredient(ItemGroups ingredientGroup)
         {
@@ -399,8 +666,8 @@ namespace DaggerfallWorkshop.Game.Items
         public static DaggerfallUnityItem CreateRandomIngredient()
         {
             // Randomise ingredient group
-            ItemGroups itemGroup = ItemGroups.None;
-            int group = UnityEngine.Random.Range(0, 7);
+            ItemGroups itemGroup;
+            int group = UnityEngine.Random.Range(0, 8);
             Array enumArray;
             switch (group)
             {
@@ -443,6 +710,37 @@ namespace DaggerfallWorkshop.Game.Items
         }
 
         /// <summary>
+        /// Creates a potion.
+        /// </summary>
+        /// <param name="recipe">Recipe index for the potion</param>
+        /// <returns>Potion DaggerfallUnityItem</returns>
+        public static DaggerfallUnityItem CreatePotion(int recipeKey, int stackSize = 1)
+        {
+            return new DaggerfallUnityItem(ItemGroups.UselessItems1, 1) { PotionRecipeKey = recipeKey, stackCount = stackSize };
+        }
+
+        /// <summary>
+        /// Creates a random potion from all registered recipes.
+        /// </summary>
+        /// <returns>Potion DaggerfallUnityItem</returns>
+        public static DaggerfallUnityItem CreateRandomPotion(int stackSize = 1)
+        {
+            List<int> recipeKeys = GameManager.Instance.EntityEffectBroker.GetPotionRecipeKeys();
+            int recipeIdx = UnityEngine.Random.Range(0, recipeKeys.Count);
+            return CreatePotion(recipeKeys[recipeIdx]);
+        }
+
+        /// <summary>
+        /// Creates a random (classic) potion
+        /// </summary>
+        /// <returns>Potion DaggerfallUnityItem</returns>
+        public static DaggerfallUnityItem CreateRandomClassicPotion()
+        {
+            int recipeIdx = UnityEngine.Random.Range(0, MagicAndEffects.PotionRecipe.classicRecipeKeys.Length);
+            return CreatePotion(MagicAndEffects.PotionRecipe.classicRecipeKeys[recipeIdx]);
+        }
+
+        /// <summary>
         /// Generates gold pieces.
         /// </summary>
         /// <param name="amount">Total number of gold pieces in stack.</param>
@@ -456,32 +754,45 @@ namespace DaggerfallWorkshop.Game.Items
         }
 
         /// <summary>
-        /// Sets a random variant of item.
+        /// Sets a random variant of clothing item.
         /// </summary>
         /// <param name="item">Item to randomize variant.</param>
-        public static void RandomizeVariant(DaggerfallUnityItem item)
+        public static void RandomizeClothingVariant(DaggerfallUnityItem item)
         {
             int totalVariants = item.ItemTemplate.variants;
             SetVariant(item, UnityEngine.Random.Range(0, totalVariants));
         }
 
         /// <summary>
-        /// Promote leather helms to chain.
-        /// Daggerfall seems to do this also as "leather" helms have the chain tint in-game.
-        /// Is this why Daggerfall intentionally leaves off the material type from helms and shields?
-        /// Might need to revisit this later.
+        /// Sets a random variant of armor item.
         /// </summary>
-        public static void FixLeatherHelm(DaggerfallUnityItem item)
+        /// <param name="item">Item to randomize variant.</param>
+        public static void RandomizeArmorVariant(DaggerfallUnityItem item)
         {
-            if (item.TemplateIndex == (int)Armor.Helm && (ArmorMaterialTypes)item.nativeMaterialValue == ArmorMaterialTypes.Leather)
-            {
-                // Change material to chain and leave other stats the same
-                item.nativeMaterialValue = (int)ArmorMaterialTypes.Chain;
+            int variant = 0;
 
-                // Change dye to chain if not set
-                if (item.dyeColor == DyeColors.Unchanged)
-                    item.dyeColor = DyeColors.Chain;
+            // We only need to pick randomly where there is more than one possible variant. Otherwise we can just pass in 0 to SetVariant and
+            // the correct variant will still be chosen.
+            if (item.IsOfTemplate(ItemGroups.Armor, (int)Armor.Cuirass) && (item.nativeMaterialValue >= (int)ArmorMaterialTypes.Iron))
+            {
+                variant = UnityEngine.Random.Range(1, 4);
             }
+            else if (item.IsOfTemplate(ItemGroups.Armor, (int)Armor.Greaves))
+            {
+                if (item.nativeMaterialValue == (int)ArmorMaterialTypes.Leather)
+                    variant = UnityEngine.Random.Range(0, 2);
+                else if (item.nativeMaterialValue >= (int)ArmorMaterialTypes.Iron)
+                    variant = UnityEngine.Random.Range(2, 6);
+            }
+            else if (item.IsOfTemplate(ItemGroups.Armor, (int)Armor.Left_Pauldron) || item.IsOfTemplate(ItemGroups.Armor, (int)Armor.Right_Pauldron))
+            {
+                if (item.nativeMaterialValue >= (int)ArmorMaterialTypes.Iron)
+                    variant = UnityEngine.Random.Range(1, 4);
+            }
+            else if (item.IsOfTemplate(ItemGroups.Armor, (int)Armor.Helm))
+                variant = UnityEngine.Random.Range(0, item.ItemTemplate.variants);
+
+            SetVariant(item, variant);
         }
 
         #endregion
@@ -541,7 +852,7 @@ namespace DaggerfallWorkshop.Game.Items
                 if (item.nativeMaterialValue == (int)ArmorMaterialTypes.Leather)
                     variant = 0;
                 else
-                    variant = Mathf.Clamp(variant, 1, 2);
+                    variant = 1;
             }
 
             // Store variant
@@ -569,7 +880,7 @@ namespace DaggerfallWorkshop.Game.Items
                     return BodyMorphology.Khajiit;
 
                 default:
-                    throw new Exception("GetBodyMorphology() encountered unsupprted race value.");
+                    throw new Exception("GetBodyMorphology() encountered unsupported race value.");
             }
         }
 

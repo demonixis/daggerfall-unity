@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -36,10 +36,11 @@ namespace DaggerfallWorkshop.Utility
         /// <param name="record">Which image record to read for multi-image files.</param>
         /// <param name="frame">Which frame to read for multi-frame images.</param>
         /// <param name="hasAlpha">Enable this for image cutouts.</param>
+        /// <param name="alphaIndex">Set the palette index for alpha check (default is 0).</param>
         /// <returns>Texture2D.</returns>
-        public static Texture2D GetTexture(string filename, int record = 0, int frame = 0, bool hasAlpha = false)
+        public static Texture2D GetTexture(string filename, int record = 0, int frame = 0, bool hasAlpha = false, int alphaIndex = 0)
         {
-            ImageData data = GetImageData(filename, record, frame, hasAlpha);
+            ImageData data = GetImageData(filename, record, frame, hasAlpha, true, false, alphaIndex);
             if (data.type == ImageTypes.None)
                 return null;
 
@@ -79,22 +80,81 @@ namespace DaggerfallWorkshop.Utility
         }
 
         /// <summary>
+        /// Converts a sub-rect to UV-styled relative coordinates.
+        /// Intended to get relative coordinates from classic image rects that can be used for replacement textures at higher resolutions.
+        /// The replacement texture must store sub-elements in proportionally the same place (i.e. be a direct upscale) as classic source.
+        /// </summary>
+        /// <param name="subRect">Input rect using pixel coordinates into classic texture.</param>
+        /// <param name="srcWidth">Full width of classic source texture.</param>
+        /// <param name="srcHeight">Full height of classic source texture.</param>
+        /// <returns>Converted Rect using relative coordinates.</returns>
+        public static Rect ConvertToRelativeSubRect(Rect subRect, int srcWidth, int srcHeight)
+        {
+            Vector2 position = new Vector2(subRect.x / srcWidth, subRect.y / srcHeight);
+            Vector2 size = new Vector2(subRect.width / srcWidth, subRect.height / srcHeight);
+
+            return new Rect(position, size);
+        }
+
+        /// <summary>
+        /// Cuts out a sub-texture from source texture using a virtual rect in a resolution-independent manner.
+        /// </summary>
+        /// <param name="texture">Source texture. Must be readable.</param>
+        /// <param name="subRect">Input rect using pixel coordinates into classic texture.</param>
+        /// <param name="srcSize">Full size of classic source texture.</param>
+        /// <returns>New Texture2D containing sub-texture.</returns>
+        public static Texture2D GetSubTexture(Texture2D texture, Rect subRect, DFSize srcSize)
+        {
+            // Cut classic textures with full rect to avoid rounding errors
+            if (texture.width == srcSize.Width && texture.height == srcSize.Height)
+                return GetSubTexture(texture, subRect, false);
+
+            // Support imported textures with a relative rect
+            return GetSubTexture(texture, ConvertToRelativeSubRect(subRect, srcSize.Width, srcSize.Height), true);
+        }
+
+        /// <summary>
         /// Cuts out a sub-texture from source texture.
         /// Useful for slicing up native UI elements into smaller functional units.
         /// </summary>
         /// <param name="texture">Source texture. Must be readable.</param>
         /// <param name="subRect">Rectangle of source image to extract. Origin 0,0 is top-left.</param>
+        /// <param name="useRelativeCoords">Rect is UV-styled relative coordinates into source texture.</param>
         /// <returns>New Texture2D containing sub-texture.</returns>
-        public static Texture2D GetSubTexture(Texture2D texture, Rect subRect)
+        public static Texture2D GetSubTexture(Texture2D texture, Rect subRect, bool useRelativeCoords = false)
         {
             // Check ready
             if (texture == null)
                 return null;
 
-            // Get Color32 from source texture
-            Color32[] colors = texture.GetPixels32();
+            // Convert relative coordinates back to pixel coordinates within source texture
+            if (useRelativeCoords)
+            {
+                subRect.x = subRect.x * texture.width;
+                subRect.y = subRect.y * texture.height;
+                subRect.width = subRect.width * texture.width;
+                subRect.height = subRect.height * texture.height;
+            }
 
-            return GetSubTexture(colors, subRect, texture.width, texture.height);
+            // Only use CopyTexture() acceleration when enabled and for selected texture formats
+            bool accelerate = DaggerfallUnity.Settings.AccelerateUICopyTexture;
+            if (texture.format != TextureFormat.ARGB32 && texture.format != TextureFormat.ARGB32)
+                accelerate = false;
+
+            // Use most efficient method available
+            if (SystemInfo.copyTextureSupport != UnityEngine.Rendering.CopyTextureSupport.None && accelerate)
+            {
+                int srcY = texture.height - (int)subRect.y - (int)subRect.height;
+                Texture2D newTexture = new Texture2D((int)subRect.width, (int)subRect.height);
+                Graphics.CopyTexture(texture, 0, 0, (int)subRect.x, srcY, (int)subRect.width, (int)subRect.height, newTexture, 0, 0, 0, 0);
+                newTexture.filterMode = DaggerfallUI.Instance.GlobalFilterMode;
+
+                return newTexture;
+            }
+            else
+            {
+                return GetSubTexture(texture.GetPixels32(), subRect, texture.width, texture.height);
+            }
         }
 
         /// <summary>
@@ -173,8 +233,10 @@ namespace DaggerfallWorkshop.Utility
         /// <param name="frame">Which frame to read for multi-frame images.</param>
         /// <param name="hasAlpha">Enable this for image cutouts.</param>
         /// <param name="createTexture">Create a Texture2D.</param>
+        /// <param name="createAllFrameTextures">Creates a Texture2D for every frame in a TEXTURE file (if greater than 1 frames).</param>
+        /// <param name="alphaIndex">Set palette index for alpha checks (default is 0).</param>
         /// <returns>ImageData. If result.type == ImageTypes.None then read failed.</returns>
-        public static ImageData GetImageData(string filename, int record = 0, int frame = 0, bool hasAlpha = false, bool createTexture = true)
+        public static ImageData GetImageData(string filename, int record = 0, int frame = 0, bool hasAlpha = false, bool createTexture = true, bool createAllFrameTextures = false, int alphaIndex = 0)
         {
             // Check API ready
             DaggerfallUnity dfUnity = DaggerfallUnity.Instance;
@@ -199,18 +261,37 @@ namespace DaggerfallWorkshop.Utility
             imageData.record = record;
             imageData.frame = frame;
             imageData.hasAlpha = hasAlpha;
+            imageData.alphaIndex = alphaIndex;
 
             // Read supported image files
             DFBitmap dfBitmap = null;
+            DFBitmap[] dfBitmapAllFrames = null;
             switch (fileType)
             {
                 case ImageTypes.TEXTURE:
                     TextureFile textureFile = new TextureFile(Path.Combine(dfUnity.Arena2Path, filename), FileUsage.UseMemory, true);
                     textureFile.LoadPalette(Path.Combine(dfUnity.Arena2Path, textureFile.PaletteName));
                     dfBitmap = textureFile.GetDFBitmap(record, frame);
+                    int frameCount = textureFile.GetFrameCount(record);
+                    if (createAllFrameTextures && frameCount > 1)
+                    {
+                        dfBitmapAllFrames = new DFBitmap[frameCount];
+                        for (int i = 0; i < frameCount; i++)
+                        {
+                            dfBitmapAllFrames[i] = textureFile.GetDFBitmap(record, i);
+                        }
+                    }
                     imageData.offset = textureFile.GetOffset(record);
                     imageData.scale = textureFile.GetScale(record);
                     imageData.size = textureFile.GetSize(record);
+
+                    // Texture pack support
+                    int archive = AssetInjection.TextureReplacement.FileNameToArchive(filename);
+                    if (createTexture && AssetInjection.TextureReplacement.TryImportTexture(archive, record, frame, out imageData.texture))
+                        createTexture = false;
+                    if (createAllFrameTextures && AssetInjection.TextureReplacement.TryImportTexture(archive, record, out imageData.animatedTextures))
+                        createAllFrameTextures = false;
+
                     break;
 
                 case ImageTypes.IMG:
@@ -220,6 +301,11 @@ namespace DaggerfallWorkshop.Utility
                     imageData.offset = imgFile.ImageOffset;
                     imageData.scale = new DFSize();
                     imageData.size = imgFile.GetSize(0);
+
+                    // Texture pack support
+                    if (createTexture && AssetInjection.TextureReplacement.TryImportImage(filename, false, out imageData.texture))
+                        createTexture = false;
+
                     break;
 
                 case ImageTypes.CIF:
@@ -230,6 +316,26 @@ namespace DaggerfallWorkshop.Utility
                     imageData.offset = cifFile.GetOffset(record);
                     imageData.scale = new DFSize();
                     imageData.size = cifFile.GetSize(record);
+
+                    // Texture pack support
+                    if (createTexture && AssetInjection.TextureReplacement.TryImportCifRci(filename, record, frame, false, out imageData.texture))
+                        createTexture = false;
+
+                    break;
+
+                case ImageTypes.CFA:
+                    CfaFile cfaFile = new CfaFile(Path.Combine(dfUnity.Arena2Path, filename), FileUsage.UseMemory, true);
+                    cfaFile.LoadPalette(Path.Combine(dfUnity.Arena2Path, cfaFile.PaletteName));
+
+                    dfBitmap = cfaFile.GetDFBitmap(record, frame);
+                    imageData.offset = new DFPosition(0, 0);
+                    imageData.scale = new DFSize();
+                    imageData.size = cfaFile.GetSize(record);
+
+                    // Texture pack support
+                    if (createTexture && AssetInjection.TextureReplacement.TryImportCifRci(filename, record, frame, false, out imageData.texture))
+                        createTexture = false;
+
                     break;
 
                 default:
@@ -253,6 +359,19 @@ namespace DaggerfallWorkshop.Utility
                 imageData.texture = GetTexture(colors, imageData.width, imageData.height);
             }
 
+            // Create animated Texture2D frames
+            if (createAllFrameTextures && dfBitmapAllFrames != null)
+            {
+                imageData.animatedTextures = new Texture2D[dfBitmapAllFrames.Length];
+                for (int i = 0; i < dfBitmapAllFrames.Length; i++)
+                {
+                    ImageData curFrame = imageData;
+                    curFrame.dfBitmap = dfBitmapAllFrames[i];
+                    Color32[] colors = GetColors(curFrame);
+                    imageData.animatedTextures[i] = GetTexture(colors, imageData.width, imageData.height);
+                }
+            }
+
             return imageData;
         }
 
@@ -263,7 +382,7 @@ namespace DaggerfallWorkshop.Utility
         public static void UpdateTexture(ref ImageData imageData)
         {
             // Get colors array
-            Color32[] colors = imageData.dfBitmap.GetColor32((imageData.hasAlpha) ? 0 : -1);
+            Color32[] colors = imageData.dfBitmap.GetColor32((imageData.hasAlpha) ? imageData.alphaIndex : -1);
             if (colors == null)
                 return;
 
@@ -279,7 +398,7 @@ namespace DaggerfallWorkshop.Utility
         public static void UpdateTexture(ref ImageData imageData, Color maskColor)
         {
             // Get colors array
-            Color32[] colors = imageData.dfBitmap.GetColor32((imageData.hasAlpha) ? 0 : -1, 0xff, maskColor);
+            Color32[] colors = imageData.dfBitmap.GetColor32((imageData.hasAlpha) ? imageData.alphaIndex : -1, 0xff, maskColor);
             if (colors == null)
                 return;
 
@@ -302,6 +421,8 @@ namespace DaggerfallWorkshop.Utility
                 return ImageTypes.CIF;
             else if (filename.EndsWith(".RCI", StringComparison.InvariantCultureIgnoreCase))
                 return ImageTypes.RCI;
+            else if (filename.EndsWith(".CFA", StringComparison.InvariantCultureIgnoreCase))
+                return ImageTypes.CFA;
             else
                 throw new Exception("ParseFileType could not match filename with a supported image type.");
         }

@@ -12,8 +12,6 @@
 + Quality of life enhancements
 + Mod support
 
-![Classic Daggerfall Plus](http://www.dfworkshop.net/wp-content/uploads/2016/07/git-comparison.jpg)
-
 ## Free Addon To Free Daggerfall
 
 + Runs using a free copy of Daggerfall
@@ -27,8 +25,6 @@
 + Quality contributions are welcome
 + Newcomers welcome and helped to learn
 + Friendly community
-
-![Classic Daggerfall Plus](http://www.dfworkshop.net/wp-content/uploads/2016/07/git-dragontailmountains.jpg)
 
 ## Available Now
 
@@ -44,9 +40,9 @@
 + [Twitter](https://twitter.com/gav_clayton) - *Follow lead developer on Twitter for more news*
 
 ## Versions
-+ *Daggerfall Unity* - v0.3.2
-+ *Daggerfall Tools for Unity* - v1.6.0
-+ *Minimum Unity3D version* - 5.4.0f3
++ *Daggerfall Unity* - v0.7.x
++ *Daggerfall Tools for Unity* - v1.8.2
++ *Minimum Unity3D version* - 2018.2.21f1
 
 ## License
 

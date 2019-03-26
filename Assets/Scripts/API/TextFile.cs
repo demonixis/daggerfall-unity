@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -28,7 +28,7 @@ namespace DaggerfallConnect.Arena2
         FileProxy fileProxy;
         bool isLoaded = false;
         TextRecordDatabaseHeader header;
-        Dictionary<int, int> recordIdToIndexDict = new Dictionary<int, int>();
+        readonly Dictionary<int, int> recordIdToIndexDict = new Dictionary<int, int>();
 
         #region Properties
 
@@ -71,6 +71,21 @@ namespace DaggerfallConnect.Arena2
             }
         }
 
+        public static Token CreateTextToken(string text)
+        {
+            Token textToken = new Token();
+            textToken.formatting = Formatting.Text;
+            textToken.text = text;
+            return textToken;
+        }
+
+        public static Token CreateFormatToken(Formatting format)
+        {
+            Token formatToken = new Token();
+            formatToken.formatting = format;
+            return formatToken;
+        }
+
         #endregion
 
         #region Enums
@@ -83,6 +98,10 @@ namespace DaggerfallConnect.Arena2
         public enum Formatting
         {
             Text = -1,
+
+            TextHighlight = -2,
+            TextQuestion = -3,
+            TextAnswer = -4,
 
             NewLineOffset = 0x00,
             SameLineOffset = 0x01,
@@ -99,6 +118,7 @@ namespace DaggerfallConnect.Arena2
 
             NewLine = 0x00,
             EndOfPage = 0xf6,
+            InputCursorPositioner = 0xf8,
             SubrecordSeparator = 0xff,
             EndOfRecord = 0xfe,
 
@@ -123,6 +143,7 @@ namespace DaggerfallConnect.Arena2
         /// Stores a single text or formatting token.
         /// This makes it possible remix localized strings with original formatting.
         /// </summary>
+        [Serializable]
         public struct Token
         {
             public Formatting formatting;
@@ -328,7 +349,7 @@ namespace DaggerfallConnect.Arena2
                     dst += string.Format("[0x{0}]", b.ToString("X2"));      // Format control bytes in [0x00] format
                 }
             }
-            
+
             return dst;
         }
 
@@ -356,10 +377,61 @@ namespace DaggerfallConnect.Arena2
                 if (IsFormattingToken(nextByte))
                     tokens.Add(ReadFormattingToken(ref buffer, position, out position));
                 else
-                    tokens.Add(ReadTextToken(ref buffer, position, out position));     
+                    tokens.Add(ReadTextToken(ref buffer, position, out position));
             }
 
             return tokens.ToArray();
+        }
+
+        /// <summary>
+        /// Simple method to split tokens into text array, one entry per text token.
+        /// Other formatting tokens are ignored.
+        /// This is best used for multi-line popup HUD text.
+        /// </summary>
+        /// <param name="tokens">Tokens.</param>
+        /// <returns>String array.</returns>
+        public static string[] GetTokenLines(Token[] tokens)
+        {
+            List<string> lines = new List<string>();
+            foreach (Token token in tokens)
+            {
+                if (token.formatting == Formatting.Text)
+                    lines.Add(token.text);
+            }
+
+            return lines.ToArray();
+        }
+
+        /// <summary>
+        /// Appends new tokens to an existing token array and optionally injects newline between current tokens and appended tokens.
+        /// </summary>
+        /// <param name="current">Current tokens.</param>
+        /// <param name="extra">New tokens to append.</param>
+        /// <param name="newLine">True to inject newline between current and extra tokens.</param>
+        /// <returns>Resultant Token[] array.</returns>
+        public static Token[] AppendTokens(Token[] current, Token[] extra, bool newLine = true)
+        {
+            // Return current tokens if extra is null or empty
+            if (extra == null || extra.Length == 0)
+                return current;
+
+            // Return extra tokens if current is null or empty
+            if (current == null || current.Length == 0)
+                return extra;
+
+            // Expand array (with optional newline) and copy current tokens
+            int newLineTokenCount = (newLine) ? 1 : 0;
+            Token[] result = new Token[current.Length + extra.Length + newLineTokenCount];
+            current.CopyTo(result, 0);
+
+            // Append optional newline
+            if (newLine)
+                result[current.Length] = NewLineToken;
+
+            // Append new tokens
+            extra.CopyTo(result, current.Length + newLineTokenCount);
+
+            return result;
         }
 
         private static Token ReadFormattingToken(ref byte[] buffer, int position, out int endPosition)

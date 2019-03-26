@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -32,7 +32,7 @@ namespace DaggerfallWorkshop.Game
                     new Rect((Screen.width * 0.5f) - (CrosshairTexture.width * 0.5f),
                         (Screen.height * 0.5f) - (CrosshairTexture.height * 0.5f),
                         CrosshairTexture.width,
-                        CrosshairTexture.height), CrosshairTexture);
+                        CrosshairTexture.height), (Texture2D)CrosshairTexture);
                 GUI.color = Color.white;
 
                 OnGUIVR.End();

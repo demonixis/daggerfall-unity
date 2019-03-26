@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -27,6 +27,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
         Texture2D leftBorderTexture, rightBorderTexture;
         Texture2D topLeftBorderTexture, topRightBorderTexture;
         Texture2D bottomLeftBorderTexture, bottomRightBorderTexture;
+        Border<Vector2Int> virtualSizes;
 
         Rect lastDrawRect;
         Rect fillBordersRect = new Rect();
@@ -40,6 +41,8 @@ namespace DaggerfallWorkshop.Game.UserInterface
         Rect bottomBorderRect = new Rect();
 
         Outline outline = new Outline();
+        Color hasFocusOutlineColor = Color.yellow;
+        Color lostFocusOutlineColor = Color.gray;
 
         ScreenComponentCollection components;
         public ScreenComponentCollection Components
@@ -52,6 +55,26 @@ namespace DaggerfallWorkshop.Game.UserInterface
         ///  Must use SetBorderTextures() before enabling border.
         /// </summary>
         public bool EnableBorder { get; set; }
+
+        /// <summary>
+        /// Automatically change outline color when gaining focus.
+        /// Only works when UseFocus true.
+        /// </summary>
+        public Color HasFocusOutlineColor
+        {
+            get { return hasFocusOutlineColor; }
+            set { hasFocusOutlineColor = value; }
+        }
+
+        /// <summary>
+        /// Automatically change outline color when losing focus.
+        /// Only works when UseFocus true.
+        /// </summary>
+        public Color LostFocusOutlineColor
+        {
+            get { return lostFocusOutlineColor; }
+            set { lostFocusOutlineColor = value; }
+        }
 
         public Outline Outline
         {
@@ -76,10 +99,13 @@ namespace DaggerfallWorkshop.Game.UserInterface
             base.Update();
 
             // Update child components
-            foreach (BaseScreenComponent component in components)
+            for (int i = 0; i < components.Count; i++)
             {
-                if (component.Enabled)
-                    component.Update();
+                if (components[i].Enabled)
+                {
+                    Components[i].CustomMousePosition = CustomMousePosition;
+                    Components[i].Update();
+                }
             }
         }
 
@@ -115,7 +141,8 @@ namespace DaggerfallWorkshop.Game.UserInterface
             Texture2D bottomLeft,
             Texture2D bottom,
             Texture2D bottomRight,
-            FilterMode filterMode)
+            FilterMode filterMode,
+            Border<Vector2Int>? virtualSizes = null)
         {
             // Save texture references
             topLeftBorderTexture = topLeft;
@@ -149,6 +176,38 @@ namespace DaggerfallWorkshop.Game.UserInterface
             // Set flags
             bordersSet = true;
             EnableBorder = true;
+
+            // Set sizes
+            this.virtualSizes = virtualSizes ?? new Border<Vector2Int>()
+            {
+                TopLeft = new Vector2Int(topLeft.width, topLeft.height),
+                Top = new Vector2Int(top.width, top.height),
+                TopRight = new Vector2Int(topRight.width, topRight.height),
+                Left = new Vector2Int(left.width, left.height),
+                Fill = new Vector2Int(fill.width, fill.height),
+                Right = new Vector2Int(right.width, right.height),
+                BottomLeft = new Vector2Int(bottomLeft.width, bottomLeft.height),
+                Bottom = new Vector2Int(bottom.width, bottom.height),
+                BottomRight = new Vector2Int(bottomRight.width, bottomRight.height)
+            };
+        }
+
+        public override void GotFocus()
+        {
+            if (UseFocus)
+            {
+                base.GotFocus();
+                Outline.Color = HasFocusOutlineColor;
+            }
+        }
+
+        public override void LostFocus()
+        {
+            if (UseFocus)
+            {
+                base.LostFocus();
+                Outline.Color = LostFocusOutlineColor;
+            }
         }
 
         #region Private Methods
@@ -166,7 +225,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
             }
 
             // Draw fill
-            GUI.DrawTextureWithTexCoords(fillBordersRect, fillBordersTexture, new Rect(0, 0, fillBordersRect.width / fillBordersTexture.width, fillBordersRect.height / fillBordersTexture.height));
+            GUI.DrawTextureWithTexCoords(fillBordersRect, fillBordersTexture, new Rect(0, 0, fillBordersRect.width / virtualSizes.Fill.x, fillBordersRect.height / virtualSizes.Fill.y));
 
             // Draw corners
             GUI.DrawTexture(topLeftBorderRect, topLeftBorderTexture);
@@ -175,10 +234,10 @@ namespace DaggerfallWorkshop.Game.UserInterface
             GUI.DrawTexture(bottomRightBorderRect, bottomRightBorderTexture);
 
             // Draw edges
-            GUI.DrawTextureWithTexCoords(topBorderRect, topBorderTexture, new Rect(0, 0, (topBorderRect.width / LocalScale.x) / topBorderTexture.width, 1));
-            GUI.DrawTextureWithTexCoords(leftBorderRect, leftBorderTexture, new Rect(0, 0, 1, (leftBorderRect.height / LocalScale.y) / leftBorderTexture.height));
-            GUI.DrawTextureWithTexCoords(rightBorderRect, rightBorderTexture, new Rect(0, 0, 1, (rightBorderRect.height / LocalScale.y) / rightBorderTexture.height));
-            GUI.DrawTextureWithTexCoords(bottomBorderRect, bottomBorderTexture, new Rect(0, 0, (bottomBorderRect.width / LocalScale.y) / bottomBorderTexture.width, 1));
+            GUI.DrawTextureWithTexCoords(topBorderRect, topBorderTexture, new Rect(0, 0, (topBorderRect.width / LocalScale.x) / virtualSizes.Top.x, 1));
+            GUI.DrawTextureWithTexCoords(leftBorderRect, leftBorderTexture, new Rect(0, 0, 1, (leftBorderRect.height / LocalScale.y) / virtualSizes.Left.y));
+            GUI.DrawTextureWithTexCoords(rightBorderRect, rightBorderTexture, new Rect(0, 0, 1, (rightBorderRect.height / LocalScale.y) / virtualSizes.Right.y));
+            GUI.DrawTextureWithTexCoords(bottomBorderRect, bottomBorderTexture, new Rect(0, 0, (bottomBorderRect.width / LocalScale.y) / virtualSizes.Bottom.x, 1));
         }
 
         void UpdateBorderDrawRects(Rect drawRect)
@@ -186,56 +245,56 @@ namespace DaggerfallWorkshop.Game.UserInterface
             // Top-left
             topLeftBorderRect.x = drawRect.x;
             topLeftBorderRect.y = drawRect.y;
-            topLeftBorderRect.width = topLeftBorderTexture.width * LocalScale.x;
-            topLeftBorderRect.height = topLeftBorderTexture.height * LocalScale.y;
+            topLeftBorderRect.width = virtualSizes.TopLeft.x * LocalScale.x;
+            topLeftBorderRect.height = virtualSizes.TopLeft.y * LocalScale.y;
 
             // Top-right
-            topRightBorderRect.x = drawRect.xMax - topRightBorderTexture.width * LocalScale.x;
+            topRightBorderRect.x = drawRect.xMax - virtualSizes.TopRight.x * LocalScale.x;
             topRightBorderRect.y = drawRect.y;
-            topRightBorderRect.width = topRightBorderTexture.width * LocalScale.x;
-            topRightBorderRect.height = topRightBorderTexture.height * LocalScale.y;
+            topRightBorderRect.width = virtualSizes.TopRight.x * LocalScale.x;
+            topRightBorderRect.height = virtualSizes.TopRight.y * LocalScale.y;
 
             // Bottom-left
             bottomLeftBorderRect.x = drawRect.x;
-            bottomLeftBorderRect.y = drawRect.yMax - bottomLeftBorderTexture.height * LocalScale.y;
-            bottomLeftBorderRect.width = bottomLeftBorderTexture.width * LocalScale.x;
-            bottomLeftBorderRect.height = bottomLeftBorderTexture.height * LocalScale.y;
+            bottomLeftBorderRect.y = drawRect.yMax - virtualSizes.BottomLeft.x * LocalScale.y;
+            bottomLeftBorderRect.width = virtualSizes.BottomLeft.x * LocalScale.x;
+            bottomLeftBorderRect.height = virtualSizes.BottomLeft.y * LocalScale.y;
 
             // Bottom-right
-            bottomRightBorderRect.x = drawRect.xMax - bottomRightBorderTexture.width * LocalScale.x;
-            bottomRightBorderRect.y = drawRect.yMax - bottomRightBorderTexture.height * LocalScale.y;
-            bottomRightBorderRect.width = bottomRightBorderTexture.width * LocalScale.x;
-            bottomRightBorderRect.height = bottomRightBorderTexture.height * LocalScale.y;
+            bottomRightBorderRect.x = drawRect.xMax - virtualSizes.BottomRight.x * LocalScale.x;
+            bottomRightBorderRect.y = drawRect.yMax - virtualSizes.BottomRight.y * LocalScale.y;
+            bottomRightBorderRect.width = virtualSizes.BottomRight.x * LocalScale.x;
+            bottomRightBorderRect.height = virtualSizes.BottomRight.y * LocalScale.y;
 
             // Top
-            topBorderRect.x = drawRect.x + topLeftBorderTexture.width * LocalScale.x;
+            topBorderRect.x = drawRect.x + virtualSizes.TopLeft.x * LocalScale.x;
             topBorderRect.y = drawRect.y;
-            topBorderRect.width = drawRect.width - topLeftBorderTexture.width * LocalScale.x - topRightBorderTexture.width * LocalScale.x;
-            topBorderRect.height = topBorderTexture.height * LocalScale.y;
+            topBorderRect.width = drawRect.width - virtualSizes.TopLeft.x * LocalScale.x - virtualSizes.TopRight.x * LocalScale.x;
+            topBorderRect.height = virtualSizes.Top.y * LocalScale.y;
 
             // Left
             leftBorderRect.x = drawRect.x;
-            leftBorderRect.y = drawRect.y + topLeftBorderTexture.height * LocalScale.y;
-            leftBorderRect.width = leftBorderTexture.width * LocalScale.x;
-            leftBorderRect.height = drawRect.height - topLeftBorderTexture.height * LocalScale.y - bottomLeftBorderTexture.height * LocalScale.y;
+            leftBorderRect.y = drawRect.y + virtualSizes.TopLeft.y * LocalScale.y;
+            leftBorderRect.width = virtualSizes.Left.x * LocalScale.x;
+            leftBorderRect.height = drawRect.height - virtualSizes.TopLeft.y * LocalScale.y - virtualSizes.BottomLeft.y * LocalScale.y;
 
             // Right
-            rightBorderRect.x = drawRect.xMax - rightBorderTexture.width * LocalScale.x;
-            rightBorderRect.y = drawRect.y + topRightBorderTexture.height * LocalScale.y;
-            rightBorderRect.width = rightBorderTexture.width * LocalScale.x;
-            rightBorderRect.height = drawRect.height - topRightBorderTexture.height * LocalScale.y - bottomRightBorderTexture.height * LocalScale.y;
+            rightBorderRect.x = drawRect.xMax - virtualSizes.Right.x * LocalScale.x;
+            rightBorderRect.y = drawRect.y + virtualSizes.TopRight.y * LocalScale.y;
+            rightBorderRect.width = virtualSizes.Right.x * LocalScale.x;
+            rightBorderRect.height = drawRect.height - virtualSizes.TopRight.y * LocalScale.y - virtualSizes.BottomRight.y * LocalScale.y;
 
             // Bottom
-            bottomBorderRect.x = drawRect.x + bottomLeftBorderTexture.width * LocalScale.x;
-            bottomBorderRect.y = drawRect.yMax - bottomBorderTexture.height * LocalScale.y;
-            bottomBorderRect.width = drawRect.width - bottomLeftBorderTexture.width * LocalScale.x - bottomRightBorderTexture.width * LocalScale.x;
-            bottomBorderRect.height = bottomBorderTexture.height * LocalScale.y;
+            bottomBorderRect.x = drawRect.x + virtualSizes.BottomLeft.x * LocalScale.x;
+            bottomBorderRect.y = drawRect.yMax - virtualSizes.Bottom.y * LocalScale.y;
+            bottomBorderRect.width = drawRect.width - virtualSizes.BottomLeft.x * LocalScale.x - virtualSizes.BottomRight.x * LocalScale.x;
+            bottomBorderRect.height = virtualSizes.Bottom.y * LocalScale.y;
 
             // Fill
-            fillBordersRect.xMin = drawRect.xMin + leftBorderTexture.width * LocalScale.x;
-            fillBordersRect.yMin = drawRect.yMin + topBorderTexture.height * LocalScale.y;
-            fillBordersRect.xMax = drawRect.xMax - rightBorderTexture.width * LocalScale.x;
-            fillBordersRect.yMax = drawRect.yMax - bottomBorderTexture.height * LocalScale.y;
+            fillBordersRect.xMin = drawRect.xMin + virtualSizes.Left.x * LocalScale.x;
+            fillBordersRect.yMin = drawRect.yMin + virtualSizes.Top.y * LocalScale.y;
+            fillBordersRect.xMax = drawRect.xMax - virtualSizes.Right.x * LocalScale.x;
+            fillBordersRect.yMax = drawRect.yMax - virtualSizes.Bottom.y * LocalScale.y;
         }
 
         #endregion

@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -51,6 +51,12 @@ namespace DaggerfallWorkshop
         [SerializeField]
         List<GameObject> startMarkers = new List<GameObject>();
 
+        // Location area in world units
+        int locationWorldRectMinX;
+        int locationWorldRectMaxX;
+        int locationWorldRectMinZ;
+        int locationWorldRectMaxZ;
+
         public LocationSummary Summary
         {
             get { return summary; }
@@ -70,10 +76,15 @@ namespace DaggerfallWorkshop
             get { return EnumerateStaticDoorCollections(); }
         }
 
+        public RectOffset LocationRect
+        {
+            get { return new RectOffset(locationWorldRectMinX, locationWorldRectMaxX, locationWorldRectMinZ, locationWorldRectMaxZ); }
+        }
+
         [Serializable]
         public struct LocationSummary
         {
-            public int ID;
+            public int MapID;
             public int Longitude;
             public int Latitude;
             public int MapPixelX;
@@ -82,7 +93,7 @@ namespace DaggerfallWorkshop
             public int WorldCoordZ;
             public string RegionName;
             public string LocationName;
-            public int WorldClimate;
+            public MapsFile.Climates WorldClimate;
             public DFRegion.LocationTypes LocationType;
             public DFRegion.DungeonTypes DungeonType;
             public bool HasDungeon;
@@ -150,7 +161,7 @@ namespace DaggerfallWorkshop
 
             // Set summary
             summary = new LocationSummary();
-            summary.ID = location.MapTableData.MapId;
+            summary.MapID = location.MapTableData.MapId;
             summary.Longitude = (int)location.MapTableData.Longitude;
             summary.Latitude = (int)location.MapTableData.Latitude;
             DFPosition mapPixel = MapsFile.LongitudeLatitudeToMapPixel(summary.Longitude, summary.Latitude);
@@ -161,7 +172,7 @@ namespace DaggerfallWorkshop
             summary.WorldCoordZ = worldCoord.Y;
             summary.RegionName = location.RegionName;
             summary.LocationName = location.Name;
-            summary.WorldClimate = location.Climate.WorldClimate;
+            summary.WorldClimate = (MapsFile.Climates)location.Climate.WorldClimate;
             summary.LocationType = location.MapTableData.LocationType;
             summary.DungeonType = location.MapTableData.DungeonType;
             summary.HasDungeon = location.HasDungeon;
@@ -183,6 +194,9 @@ namespace DaggerfallWorkshop
                 LayoutLocation(ref location);
                 ApplyClimateSettings();
             }
+
+            // Set location rect
+            SetLocationRect();
 
             // Seal location
             isSet = true;
@@ -272,7 +286,7 @@ namespace DaggerfallWorkshop
                     startMarkers.Add(db.gameObject);
                 }
             }
-        }
+        }        
 
         // Enumerates all static doors in child blocks
         DaggerfallStaticDoors[] EnumerateStaticDoorCollections()
@@ -281,6 +295,65 @@ namespace DaggerfallWorkshop
         }
 
         #region Private Methods
+
+        /// <summary>
+        /// Helper to get location rect in world coordinates.
+        /// </summary>
+        /// <param name="location">Target location.</param>
+        /// <returns>Location rect in world space. xMin,yMin is SW corner. xMax,yMax is NE corner.</returns>
+        public static Rect GetLocationRect(DFLocation location)
+        {
+            // This finds the absolute SW origin of map pixel in world coords
+            DFPosition mapPixel = MapsFile.LongitudeLatitudeToMapPixel(location.MapTableData.Longitude, location.MapTableData.Latitude);
+            DFPosition worldOrigin = MapsFile.MapPixelToWorldCoord(mapPixel.X, mapPixel.Y);
+
+            // Find tile offset point using same logic as terrain helper
+            DFPosition tileOrigin = TerrainHelper.GetLocationTerrainTileOrigin(location);
+
+            // Adjust world origin by tileorigin*2 in world units
+            worldOrigin.X += (tileOrigin.X * 2) * MapsFile.WorldMapTileDim;
+            worldOrigin.Y += (tileOrigin.Y * 2) * MapsFile.WorldMapTileDim;
+
+            // Get width and height of location in world units
+            int width = location.Exterior.ExteriorData.Width * MapsFile.WorldMapRMBDim;
+            int height = location.Exterior.ExteriorData.Height * MapsFile.WorldMapRMBDim;
+
+            // Create location rect in world coordinates
+            Rect locationRect = new Rect() {
+                xMin = worldOrigin.X,
+                xMax = worldOrigin.X + width,
+                yMin = worldOrigin.Y,
+                yMax = worldOrigin.Y + height,
+            };
+
+            return locationRect;
+        }
+
+        void SetLocationRect()
+        {
+            // Convert world coords to map pixel coords then back again
+            // This finds the absolute SW origin of this map pixel in world coords
+            DFPosition mapPixel = new DFPosition(Summary.MapPixelX, Summary.MapPixelY);
+            DFPosition worldOrigin = MapsFile.MapPixelToWorldCoord(mapPixel.X, mapPixel.Y);
+
+            // Find tile offset point using same logic as terrain helper
+            DFLocation currentLocation = Summary.LegacyLocation;
+            DFPosition tileOrigin = TerrainHelper.GetLocationTerrainTileOrigin(currentLocation);
+
+            // Adjust world origin by tileorigin*2 in world units
+            worldOrigin.X += (tileOrigin.X * 2) * MapsFile.WorldMapTileDim;
+            worldOrigin.Y += (tileOrigin.Y * 2) * MapsFile.WorldMapTileDim;
+
+            // Get width and height of location in world units
+            int width = currentLocation.Exterior.ExteriorData.Width * MapsFile.WorldMapRMBDim;
+            int height = currentLocation.Exterior.ExteriorData.Height * MapsFile.WorldMapRMBDim;
+
+            // Set location rect in world coordinates
+            locationWorldRectMinX = worldOrigin.X;
+            locationWorldRectMaxX = worldOrigin.X + width;
+            locationWorldRectMinZ = worldOrigin.Y;
+            locationWorldRectMaxZ = worldOrigin.Y + height;
+        }
 
         private int GetNatureArchive()
         {
@@ -319,19 +392,19 @@ namespace DaggerfallWorkshop
             int height = location.Exterior.ExteriorData.Height;
 
             // Create billboard batch game objects for this location
-            TextureAtlasBuilder miscBillboardAtlas = null;
+            //TextureAtlasBuilder miscBillboardAtlas = null;
             summary.NatureBillboardBatch = null;
             DaggerfallBillboardBatch lightsBillboardBatch = null;
             DaggerfallBillboardBatch animalsBillboardBatch = null;
-            DaggerfallBillboardBatch miscBillboardBatch = null;
+            //DaggerfallBillboardBatch miscBillboardBatch = null;
             if (dfUnity.Option_BatchBillboards)
             {
-                miscBillboardAtlas = dfUnity.MaterialReader.MiscBillboardAtlas;
+                //miscBillboardAtlas = dfUnity.MaterialReader.MiscBillboardAtlas;
                 int natureArchive = ClimateSwaps.GetNatureArchive(CurrentNatureSet, CurrentSeason);
                 summary.NatureBillboardBatch = GameObjectHelper.CreateBillboardBatchGameObject(natureArchive, transform);
                 lightsBillboardBatch = GameObjectHelper.CreateBillboardBatchGameObject(TextureReader.LightsTextureArchive, transform);
                 animalsBillboardBatch = GameObjectHelper.CreateBillboardBatchGameObject(TextureReader.AnimalsTextureArchive, transform);
-                miscBillboardBatch = GameObjectHelper.CreateBillboardBatchGameObject(miscBillboardAtlas.AtlasMaterial, transform);
+                //miscBillboardBatch = GameObjectHelper.CreateBillboardBatchGameObject(miscBillboardAtlas.AtlasMaterial, transform);
             }
 
             // Import blocks
@@ -347,19 +420,21 @@ namespace DaggerfallWorkshop
                         summary.NatureBillboardBatch.BlockOrigin = blockOrigin;
                         lightsBillboardBatch.BlockOrigin = blockOrigin;
                         animalsBillboardBatch.BlockOrigin = blockOrigin;
-                        miscBillboardBatch.BlockOrigin = blockOrigin;
+                        //miscBillboardBatch.BlockOrigin = blockOrigin;
                     }
 
                     string blockName = dfUnity.ContentReader.BlockFileReader.CheckName(dfUnity.ContentReader.MapFileReader.GetRmbBlockName(ref location, x, y));
                     GameObject go = GameObjectHelper.CreateRMBBlockGameObject(
                         blockName,
+                        x,
+                        y,
                         dfUnity.Option_RMBGroundPlane,
                         dfUnity.Option_CityBlockPrefab,
                         summary.NatureBillboardBatch,
                         lightsBillboardBatch,
                         animalsBillboardBatch,
-                        miscBillboardAtlas,
-                        miscBillboardBatch,
+                        null, //miscBillboardAtlas,
+                        null, //miscBillboardBatch,
                         CurrentNatureSet,
                         CurrentSeason);
                     go.transform.parent = this.transform;
@@ -371,7 +446,7 @@ namespace DaggerfallWorkshop
             if (summary.NatureBillboardBatch) summary.NatureBillboardBatch.Apply();
             if (lightsBillboardBatch) lightsBillboardBatch.Apply();
             if (animalsBillboardBatch) animalsBillboardBatch.Apply();
-            if (miscBillboardBatch) miscBillboardBatch.Apply();
+            //if (miscBillboardBatch) miscBillboardBatch.Apply();
 
             // Enumerate start marker game objects
             EnumerateStartMarkers();

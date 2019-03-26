@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -32,7 +32,8 @@ namespace DaggerfallWorkshop.Game.UserInterface
         BaseScreenComponent parent;
         Vector2 position;
         Vector2 size;
-        bool hasFocus = false;
+        Vector2 rootSize;
+        bool useFocus = false;
 
         ToolTip toolTip = null;
         string toolTipText = string.Empty;
@@ -44,9 +45,17 @@ namespace DaggerfallWorkshop.Game.UserInterface
         HorizontalAlignment horizontalAlignment = HorizontalAlignment.None;
         VerticalAlignment verticalAlignment = VerticalAlignment.None;
 
+        // restricted render area can be used to force background rendering inside this rect (must be used in conjunction with ui elements that also support restricted render area like textlabel)
+        protected bool useRestrictedRenderArea = false;
+        protected Rect rectRestrictedRenderArea;
+
         float doubleClickDelay = 0.3f;
-        float clickTime;
-        float lastClickTime;
+        float leftClickTime;
+        float lastLeftClickTime;
+        float rightClickTime;
+        float lastRightClickTime;
+        float middleClickTime;
+        float lastMiddleClickTime;
 
         float updateTime;
         float lastUpdateTime;
@@ -56,23 +65,31 @@ namespace DaggerfallWorkshop.Game.UserInterface
         Vector2 mousePosition;
         Vector2 lastScaledMousePosition;
         Vector2 scaledMousePosition;
+        Vector2? customMousePosition = null;
 
         Color backgroundColor = Color.clear;
+        Color mouseOverBackgroundColor = Color.clear;
         Texture2D backgroundColorTexture;
         protected Texture2D backgroundTexture;
+        protected Texture2D[] animatedBackgroundTextures;
         protected BackgroundLayout backgroundTextureLayout = BackgroundLayout.StretchToFill;
+
+        int animationFrame = 0;
+        float animationDelay = 0.25f;
+        float animationLastTickTime = 0f;
 
         bool mouseOverComponent = false;
         bool leftMouseWasHeldDown = false;
         bool rightMouseWasHeldDown = false;
+        bool middleMouseWasHeldDown = false;
 
         float minAutoScale = 0;
         float maxAutoScale = 0;
 
-        public delegate void OnMouseEnterHandler();
+        public delegate void OnMouseEnterHandler(BaseScreenComponent sender);
         public event OnMouseEnterHandler OnMouseEnter;
 
-        public delegate void OnMouseLeaveHandler();
+        public delegate void OnMouseLeaveHandler(BaseScreenComponent sender);
         public event OnMouseLeaveHandler OnMouseLeave;
 
         public delegate void OnMouseMoveHandler(int x, int y);
@@ -87,6 +104,9 @@ namespace DaggerfallWorkshop.Game.UserInterface
         public delegate void OnMouseClickHandler(BaseScreenComponent sender, Vector2 position);
         public event OnMouseClickHandler OnMouseClick;
 
+        public delegate void OnMouseDoubleClickHandler(BaseScreenComponent sender, Vector2 position);
+        public event OnMouseDoubleClickHandler OnMouseDoubleClick;
+
         public delegate void OnRightMouseDownHandler(BaseScreenComponent sender, Vector2 position);
         public event OnRightMouseDownHandler OnRightMouseDown;
         
@@ -96,13 +116,25 @@ namespace DaggerfallWorkshop.Game.UserInterface
         public delegate void OnRightMouseClickHandler(BaseScreenComponent sender, Vector2 position);
         public event OnRightMouseClickHandler OnRightMouseClick;
 
-        public delegate void OnMouseDoubleClickHandler(BaseScreenComponent sender, Vector2 position);
-        public event OnMouseDoubleClickHandler OnMouseDoubleClick;
+        public delegate void OnRightMouseDoubleClickHandler(BaseScreenComponent sender, Vector2 position);
+        public event OnRightMouseDoubleClickHandler OnRightMouseDoubleClick;
 
-        public delegate void OnMouseScrollUpEventHandler();
+        public delegate void OnMiddleMouseDownHandler(BaseScreenComponent sender, Vector2 position);
+        public event OnMiddleMouseDownHandler OnMiddleMouseDown;
+
+        public delegate void OnMiddleMouseUpHandler(BaseScreenComponent sender, Vector2 position);
+        public event OnMiddleMouseUpHandler OnMiddleMouseUp;
+
+        public delegate void OnMiddleMouseClickHandler(BaseScreenComponent sender, Vector2 position);
+        public event OnMiddleMouseClickHandler OnMiddleMouseClick;
+
+        public delegate void OnMiddleMouseDoubleClickHandler(BaseScreenComponent sender, Vector2 position);
+        public event OnMiddleMouseDoubleClickHandler OnMiddleMouseDoubleClick;
+
+        public delegate void OnMouseScrollUpEventHandler(BaseScreenComponent sender);
         public event OnMouseScrollUpEventHandler OnMouseScrollUp;
 
-        public delegate void OnMouseScrollDownEventHandler();
+        public delegate void OnMouseScrollDownEventHandler(BaseScreenComponent sender);
         public event OnMouseScrollDownEventHandler OnMouseScrollDown;
 
         #endregion
@@ -119,11 +151,14 @@ namespace DaggerfallWorkshop.Game.UserInterface
         }
 
         /// <summary>
-        /// Flags for control focus.
+        /// Gets or sets flag to make control focus-senstitive.
+        /// When enabled, this control will gain focus when clicked and lose focus when another control is clicked.
+        /// How focus is implemented depends on inherited control.
         /// </summary>
-        public bool HasFocus
+        public bool UseFocus
         {
-            get { return hasFocus; }
+            get { return useFocus; }
+            set { useFocus = value; }
         }
 
         /// <summary>
@@ -163,6 +198,17 @@ namespace DaggerfallWorkshop.Game.UserInterface
         }
 
         /// <summary>
+        /// Gets or sets root size when no parent is avaialable.
+        /// Should only be set for root panel in UI stack.
+        /// If root size is not set then screen dimensions will be used.
+        /// </summary>
+        public Vector2 RootSize
+        {
+            get { return rootSize; }
+            set { rootSize = value; }
+        }
+
+        /// <summary>
         /// Gets parent panel.
         /// </summary>
         public virtual BaseScreenComponent Parent
@@ -195,6 +241,34 @@ namespace DaggerfallWorkshop.Game.UserInterface
         {
             get { return verticalAlignment; }
             set { verticalAlignment = value; }
+        }
+
+        /// <summary>
+        /// get/set a restricted render area for background rendering - the background will only be rendered inside the specified Rect's bounds
+        /// </summary>
+        public Rect RectRestrictedRenderArea
+        {
+            get { return rectRestrictedRenderArea; }
+            set
+            {
+                rectRestrictedRenderArea = value;
+                useRestrictedRenderArea = true;
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets custom mouse position.
+        /// When null the screen mouse position will be used from Input system as normal.
+        /// When non-null this value will be used in place of mouse coordinates from Input system.
+        /// Will propagate down through Panel hierarchy from root to leaf controls.
+        /// Allows for custom pointer input from rays and other sources.
+        /// Input must be in "pixel coordinates" relatve to root panel dimensions.
+        /// For example, if root panel is 256x256 pixels then coordinates are between 0,0 and 255,255.
+        /// </summary>
+        public Vector2? CustomMousePosition
+        {
+            get { return customMousePosition; }
+            set { customMousePosition = value; }
         }
 
         /// <summary>
@@ -232,6 +306,25 @@ namespace DaggerfallWorkshop.Game.UserInterface
         }
 
         /// <summary>
+        /// Gets or sets alternate background colour when mouse is over control.
+        /// This colour will replace any other background colour for the time mouse is over control.
+        /// </summary>
+        public Color MouseOverBackgroundColor
+        {
+            get { return mouseOverBackgroundColor; }
+            set { SetMouseOverBackgroundColor(value); }
+        }
+
+        /// <summary>
+        /// Gets or sets background colour texture.
+        /// </summary>
+        public Texture2D BackgroundColorTexture
+        {
+            get { return backgroundColorTexture; }
+            set { backgroundColorTexture = value; }
+        }
+
+        /// <summary>
         /// Gets or sets background texture.
         ///  Will replace BackgroundColor if set.
         /// </summary>
@@ -239,6 +332,32 @@ namespace DaggerfallWorkshop.Game.UserInterface
         {
             get { return backgroundTexture; }
             set { backgroundTexture = value; }
+        }
+
+        /// <summary>
+        /// Gets or sets array of background textures for animated background.
+        /// Set null to disable animated background.
+        /// Any existing background texture is removed when setting an animated background.
+        /// </summary>
+        public Texture2D[] AnimatedBackgroundTextures
+        {
+            get { return animatedBackgroundTextures; }
+            set
+            {
+                backgroundTexture = null;
+                animatedBackgroundTextures = value;
+                if (animatedBackgroundTextures != null && animationFrame >= animatedBackgroundTextures.Length)
+                    animationFrame = 0;
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets animation delay in seconds.
+        /// </summary>
+        public float AnimationDelayInSeconds
+        {
+            get { return animationDelay; }
+            set { animationDelay = value; }
         }
 
         /// <summary>
@@ -385,9 +504,18 @@ namespace DaggerfallWorkshop.Game.UserInterface
             lastUpdateTime = updateTime;
             updateTime = Time.realtimeSinceStartup;
 
-            // Update raw mouse pos - must invert mouse position Y as Unity 0,0 is bottom-left
+            // Get new mouse position
             lastMousePosition = mousePosition;
-            mousePosition = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
+            if (customMousePosition != null)
+            {
+                // Use custom mouse position
+                mousePosition = customMousePosition.Value;
+            }
+            else
+            {
+                // Update raw mouse screen position from Input - must invert mouse position Y as Unity 0,0 is bottom-left
+                mousePosition = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
+            }
             scaledMousePosition = -Vector2.one;
 
             // Check if mouse is inside rectangle
@@ -406,7 +534,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
                 if (mouseOverComponent == true)
                 {
                     // Raise mouse leaving event
-                    MouseExit();
+                    MouseLeave(this);
                     mouseOverComponent = false;
                 }
             }
@@ -441,10 +569,12 @@ namespace DaggerfallWorkshop.Game.UserInterface
             // Get left and right mouse down for general click handling and double-click sampling
             bool leftMouseDown = Input.GetMouseButtonDown(0);
             bool rightMouseDown = Input.GetMouseButtonDown(1);
+            bool middleMouseDown = Input.GetMouseButtonDown(2);
 
             // Get left and right mouse down for up/down events
             bool leftMouseHeldDown = Input.GetMouseButton(0);
             bool rightMouseHeldDown = Input.GetMouseButton(1);
+            bool middleMouseHeldDown = Input.GetMouseButton(2);
 
             // Handle left mouse down/up events
             // Can only trigger mouse down while over component but can release from anywhere
@@ -476,6 +606,21 @@ namespace DaggerfallWorkshop.Game.UserInterface
                     OnRightMouseUp(this, scaledMousePosition);
             }
 
+            // Handle middle mouse down/up events
+            // Can only trigger mouse down while over component but can release from anywhere
+            if (mouseOverComponent && middleMouseHeldDown && !middleMouseWasHeldDown)
+            {
+                middleMouseWasHeldDown = true;
+                if (OnMiddleMouseDown != null)
+                    OnMiddleMouseDown(this, scaledMousePosition);
+            }
+            if (!middleMouseHeldDown && middleMouseWasHeldDown)
+            {
+                middleMouseWasHeldDown = false;
+                if (OnMiddleMouseUp != null)
+                    OnMiddleMouseUp(this, scaledMousePosition);
+            }
+
             // Handle left mouse clicks
             if (mouseOverComponent && leftMouseDown)
             {
@@ -483,11 +628,11 @@ namespace DaggerfallWorkshop.Game.UserInterface
                 MouseClick(scaledMousePosition);
 
                 // Store mouse click timing
-                lastClickTime = clickTime;
-                clickTime = Time.realtimeSinceStartup;
+                lastLeftClickTime = leftClickTime;
+                leftClickTime = Time.realtimeSinceStartup;
 
                 // Handle left mouse double-clicks
-                if (clickTime - lastClickTime < doubleClickDelay)
+                if (leftClickTime - lastLeftClickTime < doubleClickDelay)
                     MouseDoubleClick(scaledMousePosition);
             }
 
@@ -496,6 +641,29 @@ namespace DaggerfallWorkshop.Game.UserInterface
             {
                 // Single click event
                 RightMouseClick(scaledMousePosition);
+
+                // Store mouse click timing
+                lastRightClickTime = rightClickTime;
+                rightClickTime = Time.realtimeSinceStartup;
+
+                // Handle right mouse double-clicks
+                if (rightClickTime - lastRightClickTime < doubleClickDelay)
+                    RightMouseDoubleClick(scaledMousePosition);
+            }
+
+            // Handle middle mouse clicks
+            if (mouseOverComponent && middleMouseDown)
+            {
+                // Single click event
+                MiddleMouseClick(scaledMousePosition);
+
+                // Store mouse click timing
+                lastMiddleClickTime = middleClickTime;
+                middleClickTime = Time.realtimeSinceStartup;
+
+                // Handle middle mouse double-clicks
+                if (middleClickTime - lastMiddleClickTime < doubleClickDelay)
+                    MiddleMouseDoubleClick(scaledMousePosition);
             }
 
             // Handle mouse wheel
@@ -521,32 +689,72 @@ namespace DaggerfallWorkshop.Game.UserInterface
             if (!enabled)
                 return;
 
-            // Draw background
+            // Animated background textures
+            if (animatedBackgroundTextures != null && animatedBackgroundTextures.Length > 0)
+            {
+                // Tick animation
+                if (Time.realtimeSinceStartup > animationLastTickTime + animationDelay)
+                {
+                    if (++animationFrame >= animatedBackgroundTextures.Length)
+                        animationFrame = 0;
+
+                    animationLastTickTime = Time.realtimeSinceStartup;
+                }
+
+                // Assign current frame as background texture reference
+                backgroundTexture = animatedBackgroundTextures[animationFrame];
+            }
+
+            // Calculate cutout rect
             Rect myRect = Rectangle;
+            if (useRestrictedRenderArea)
+            {
+                Rect rect = new Rect(this.Parent.Position + this.Position, this.Size);
+
+                Vector2 parentScale = parent.LocalScale;
+
+                float leftCut = Math.Max(0, rectRestrictedRenderArea.xMin - rect.xMin) * parentScale.x;
+                float rightCut = Math.Max(0, rect.xMax - rectRestrictedRenderArea.xMax) * parentScale.x;
+                float topCut = Math.Max(0, rectRestrictedRenderArea.yMin - rect.yMin) * parentScale.y;
+                float bottomCut = Math.Max(0, rect.yMax - rectRestrictedRenderArea.yMax) * parentScale.y;
+                
+                myRect = new Rect(new Vector2(Rectangle.xMin + leftCut, Rectangle.yMin + topCut), new Vector2(Rectangle.width - leftCut - rightCut, Rectangle.height - topCut - bottomCut));
+            }
+
+            // Draw background colour or mouse over background colour
+            if (mouseOverComponent && mouseOverBackgroundColor != Color.clear && backgroundColorTexture)
+            {
+                Color color = GUI.color;
+                GUI.color = mouseOverBackgroundColor;
+                GUI.DrawTexture(myRect, backgroundColorTexture, ScaleMode.StretchToFill);
+                GUI.color = color;
+            }
+            else if (backgroundColor != Color.clear && backgroundColorTexture)
+            {
+                Color color = GUI.color;
+                GUI.color = backgroundColor;
+                GUI.DrawTexture(myRect, backgroundColorTexture, ScaleMode.StretchToFill);
+                GUI.color = color;
+            }
+
+            // Draw background texture if present
             if (backgroundTexture)
             {
                 switch (backgroundTextureLayout)
                 {
                     case BackgroundLayout.Tile:
                         backgroundTexture.wrapMode = TextureWrapMode.Repeat;
-                        GUI.DrawTextureWithTexCoords(Rectangle, backgroundTexture, new Rect(0, 0, myRect.width / backgroundTexture.width, myRect.height / backgroundTexture.height));
+                        GUI.DrawTextureWithTexCoords(myRect, backgroundTexture, new Rect(0, 0, myRect.width / backgroundTexture.width, myRect.height / backgroundTexture.height));
                         break;
                     case BackgroundLayout.StretchToFill:
                         backgroundTexture.wrapMode = TextureWrapMode.Clamp;
-                        GUI.DrawTexture(Rectangle, backgroundTexture, ScaleMode.StretchToFill);
+                        GUI.DrawTexture(myRect, backgroundTexture, ScaleMode.StretchToFill);
                         break;
                     case BackgroundLayout.ScaleToFit:
                         backgroundTexture.wrapMode = TextureWrapMode.Clamp;
-                        GUI.DrawTexture(Rectangle, backgroundTexture, ScaleMode.ScaleToFit);
+                        GUI.DrawTexture(myRect, backgroundTexture, ScaleMode.ScaleToFit);
                         break;
                 }
-            }
-            else if (backgroundColor != Color.clear && backgroundColorTexture != null)
-            {
-                Color color = GUI.color;
-                GUI.color = backgroundColor;
-                GUI.DrawTexture(Rectangle, backgroundColorTexture, ScaleMode.StretchToFill);
-                GUI.color = color;
             }
 
             // Draw tooltip on mouse hover
@@ -591,6 +799,20 @@ namespace DaggerfallWorkshop.Game.UserInterface
             return localRect;
         }
 
+        /// <summary>
+        /// Called when control gains focus in window.
+        /// </summary>
+        public virtual void GotFocus()
+        {
+        }
+
+        /// <summary>
+        /// Called when control loses focus in window.
+        /// </summary>
+        public virtual void LostFocus()
+        {
+        }
+
         #endregion
 
         #region Protected Methods
@@ -602,15 +824,37 @@ namespace DaggerfallWorkshop.Game.UserInterface
         {
             if (OnMouseClick != null)
                 OnMouseClick(this, clickPosition);
+
+
+            // Set focus on click
+            if (UseFocus)
+                SetFocus();
         }
 
         /// <summary>
-        /// Mouse clicked inside control area.
+        /// Right Mouse clicked inside control area.
         /// </summary>
         protected virtual void RightMouseClick(Vector2 clickPosition)
         {
             if (OnRightMouseClick != null)
                 OnRightMouseClick(this, clickPosition);
+
+            // Set focus on click
+            if (UseFocus)
+                SetFocus();
+        }
+
+        /// <summary>
+        /// Middle Mouse clicked inside control area.
+        /// </summary>
+        protected virtual void MiddleMouseClick(Vector2 clickPosition)
+        {
+            if (OnMiddleMouseClick != null)
+                OnMiddleMouseClick(this, clickPosition);
+
+            // Set focus on click
+            if (UseFocus)
+                SetFocus();
         }
 
         /// <summary>
@@ -623,21 +867,48 @@ namespace DaggerfallWorkshop.Game.UserInterface
         }
 
         /// <summary>
+        /// Right Mouse double-clicked inside control area.
+        /// </summary>
+        protected virtual void RightMouseDoubleClick(Vector2 clickPosition)
+        {
+            if (OnRightMouseDoubleClick != null)
+                OnRightMouseDoubleClick(this, clickPosition);
+        }
+
+        /// <summary>
+        /// Middle Mouse double-clicked inside control area.
+        /// </summary>
+        protected virtual void MiddleMouseDoubleClick(Vector2 clickPosition)
+        {
+            if (OnMiddleMouseDoubleClick != null)
+                OnMiddleMouseDoubleClick(this, clickPosition);
+        }
+
+        /// <summary>
         /// Mouse entered control area.
         /// </summary>
         protected virtual void MouseEnter()
         {
             if (OnMouseEnter != null)
-                OnMouseEnter();
+                OnMouseEnter(this);
         }
 
         /// <summary>
         /// Mouse exited control area.
         /// </summary>
-        protected virtual void MouseExit()
+        protected virtual void MouseLeave(BaseScreenComponent sender)
         {
             if (OnMouseLeave != null)
-                OnMouseLeave();
+                OnMouseLeave(this);
+        }
+
+        /// <summary>
+        /// Mouse is moving.
+        /// </summary>
+        protected virtual void MouseMove(int x, int y)
+        {
+            if (OnMouseMove != null)
+                OnMouseMove(x, y);
         }
 
         /// <summary>
@@ -646,7 +917,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
         protected virtual void MouseScrollUp()
         {
             if (OnMouseScrollUp != null)
-                OnMouseScrollUp();
+                OnMouseScrollUp(this);
         }
 
         /// <summary>
@@ -655,7 +926,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
         protected virtual void MouseScrollDown()
         {
             if (OnMouseScrollDown != null)
-                OnMouseScrollDown();
+                OnMouseScrollDown(this);
         }
 
         #endregion
@@ -726,6 +997,33 @@ namespace DaggerfallWorkshop.Game.UserInterface
             }
         }
 
+        /// <summary>
+        /// Set focus to this control.
+        /// </summary>
+        public void SetFocus()
+        {
+            IUserInterfaceWindow topWindow = DaggerfallUI.UIManager.TopWindow;
+            if (topWindow != null)
+            {
+                topWindow.SetFocus(this);
+            }
+        }
+
+        /// <summary>
+        /// Checks if this control has focus.
+        /// </summary>
+        public bool HasFocus()
+        {
+            IUserInterfaceWindow topWindow = DaggerfallUI.UIManager.TopWindow;
+            if (topWindow != null)
+            {
+                if (topWindow.FocusControl == this)
+                    return true;
+            }
+
+            return false;
+        }
+
         #endregion
 
         #region Private Methods
@@ -749,9 +1047,16 @@ namespace DaggerfallWorkshop.Game.UserInterface
             Rect parentRect = new Rect();
 
             if (parent != null)
+            {
                 parentRect = parent.Rectangle;
+            }
             else
-                parentRect = new Rect(0, 0, Screen.width, Screen.height);
+            {
+                if (rootSize == Vector2.zero)
+                    parentRect = new Rect(0, 0, Screen.width, Screen.height);
+                else
+                    parentRect = new Rect(0, 0, rootSize.x, rootSize.y);
+            }
 
             return parentRect;
         }
@@ -949,19 +1254,27 @@ namespace DaggerfallWorkshop.Game.UserInterface
         /// <param name="color">Color to use as background colour.</param>
         private void SetBackgroundColor(Color color)
         {
+            CreateBackgroundColorTexture();
             backgroundColor = color;
+        }
+
+        /// <summary>
+        /// Sets mouse over background color and updates texture.
+        /// </summary>
+        /// <param name="color">Color to use as mouse over background colour.</param>
+        private void SetMouseOverBackgroundColor(Color color)
+        {
+            CreateBackgroundColorTexture();
+            mouseOverBackgroundColor = color;
+        }
+
+        /// <summary>
+        /// Create a white texture for background colour setups.
+        /// </summary>
+        private void CreateBackgroundColorTexture()
+        {
             if (backgroundColorTexture == null)
-            {
-                backgroundColorTexture = new Texture2D(colorTextureDim, colorTextureDim);
-                Color32[] colors = new Color32[colorTextureDim * colorTextureDim];
-                for (int i = 0; i < colors.Length; i++)
-                {
-                    colors[i] = Color.white;
-                }
-                backgroundColorTexture.SetPixels32(colors);
-                backgroundColorTexture.Apply(false, true);
-                backgroundColorTexture.filterMode = FilterMode.Point;
-            }
+                backgroundColorTexture = DaggerfallUI.CreateSolidTexture(Color.white, colorTextureDim);
         }
 
         /// <summary>

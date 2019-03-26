@@ -10,8 +10,15 @@ Fullscreen=False
 FieldOfView=65
 MainFilterMode=0
 QualityLevel=5
+ShadowResolutionMode=0
 UseLegacyDeferred=False
 DungeonLightShadows=False
+InteriorLightShadows=True
+EnableTextureArrays=True
+RandomDungeonTextures=0
+
+[Audio]
+SoundFont=
 
 [ChildGuard]
 PlayerNudity=False
@@ -28,17 +35,44 @@ EnableToolTips=True
 ToolTipDelayInSeconds=0.0
 ToolTipBackgroundColor=404040D2
 ToolTipTextColor=E6E6C8FF
-AutomapNumberOfDungeons=5
+ShopQualityPresentation=0
+ShopQualityHUDDelay=4
+ShowQuestJournalClocksAsCountdown=False
+EnableInventoryInfoPanel=True
+EnableEnhancedItemLists=False
+EnableVitalsIndicators=True
+EnableModernConversationStyleInTalkWindow=False
+HelmAndShieldMaterialDisplay=0
+InteractionModeIcon = minimal
+EnableArrowCounter=True
+AccelerateUICopyTexture=False
+SDFFontRendering=True
+EnableGeographicBackgrounds=False
+
+[Spells]
+EnableSpellLighting=True
+EnableSpellShadows=True
 
 [Controls]
 InvertMouseVertical=False
 MouseLookSmoothing=True
 MouseLookSensitivity=1.0
-HeadBobbing=False
+HeadBobbing=True
 Handedness=0
-WeaponSwingThreshold=0.8
-WeaponSwingTriggerCount=3
+WeaponAttackThreshold=0.03
 WeaponSensitivity=1.0
+MoveSpeedAcceleration=10.0
+ClickToAttack = False
+CameraRecoilStrength = 3
+SoundVolume = 1.0
+MusicVolume = 1.0
+InstantRepairs = False
+AllowMagicRepairs = False
+
+[Map]
+AutomapNumberOfDungeons=5
+ExteriorMapDefaultZoomLevel=8
+ExteriorMapResetZoomLevelOnNewLocation=True
 
 [Startup]
 StartCellX=109
@@ -46,15 +80,22 @@ StartCellY=158
 StartInDungeon=True
 
 [Experimental]
-HQTooltips=False
 TerrainDistance=3
-DebugWeaponSwings=False
+TerrainHeightmapPixelError=5
+SmallerDungeons=False
 
 [Enhancements]
 LypyL_GameConsole=True
 LypyL_ModSystem=True
-LypyL_EnhancedSky=False
-Nystul_IncreasedTerrainDistance=False
-Nystul_RealtimeReflections=False
-UncannyValley_RealGrass=False
-UncannyValley_BirdsInDaggerfall=False
+AssetInjection=True
+CompressModdedTextures=True
+NearDeathWarning=True
+AdvancedClimbing=True
+AlternateRandomEnemySelection=False
+DungeonAmbientLightScale=1.0
+NightAmbientLightScale=1.0
+PlayerTorchLightScale=1.0
+PlayerTorchFromItems=False
+CombatVoices=True
+EnemyInfighting=True
+EnhancedCombatAI=True

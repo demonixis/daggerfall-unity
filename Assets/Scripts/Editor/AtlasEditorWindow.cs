@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -145,7 +145,7 @@ namespace DaggerfallWorkshop
 
             if (regionNames.Length == 0)
             {
-                regionNames = (string[])dfUnity.ContentReader.MapFileReader.RegionNames.Clone();
+                regionNames = (string[])MapsFile.RegionNames.Clone();
                 System.Array.Sort(regionNames);
             }
 
@@ -190,14 +190,14 @@ namespace DaggerfallWorkshop
                     case SearchPatterns.Dungeons:
                         if (type == DFRegion.LocationTypes.DungeonKeep ||
                             type == DFRegion.LocationTypes.DungeonLabyrinth ||
-                            type == DFRegion.LocationTypes.DungeonRuin)
+                            type == DFRegion.LocationTypes.DungeonRuin ||
+                            type == DFRegion.LocationTypes.Coven)
                         {
                             addName = true;
                         }
                         break;
                     case SearchPatterns.Graveyards:
-                        if (type == DFRegion.LocationTypes.GraveyardCommon ||
-                            type == DFRegion.LocationTypes.GraveyardForgotten)
+                        if (type == DFRegion.LocationTypes.Graveyard)
                         {
                             addName = true;
                         }
@@ -218,8 +218,7 @@ namespace DaggerfallWorkshop
                         }
                         break;
                     case SearchPatterns.Temples:
-                        if (type == DFRegion.LocationTypes.ReligionCoven ||
-                            type == DFRegion.LocationTypes.ReligionCult ||
+                        if (type == DFRegion.LocationTypes.ReligionCult ||
                             type == DFRegion.LocationTypes.ReligionTemple)
                         {
                             addName = true;

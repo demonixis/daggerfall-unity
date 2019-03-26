@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -54,7 +54,6 @@ namespace DaggerfallWorkshop
         const int skyNativeHalfWidth = 256;     // Half native image width
         const int skyNativeHeight = 220;        // Native image height
         const float skyScale = 1.3f;            // Scale of sky image relative to display area
-        const float skyHorizon = 0.20f;         // Higher the value lower the horizon
 
         DaggerfallUnity dfUnity;
         public SkyFile skyFile;
@@ -73,7 +72,7 @@ namespace DaggerfallWorkshop
         System.Random random = new System.Random(0);
         bool showNightSky = true;
 
-        SkyColors skyColors = new SkyColors();
+        public SkyColors skyColors = new SkyColors();
         float starChance = 0.004f;
         byte[] starColorIndices = new byte[] { 16, 32, 74, 105, 112, 120 };     // Some random sky colour indices
 
@@ -197,59 +196,51 @@ namespace DaggerfallWorkshop
             float halfScreenWidth = Screen.width * 0.5f;
 
             // Scroll left-right
-            float percent = 0;
-            float scrollX = 0;
-            float westOffset = 0;
-            float eastOffset = 0;
-            if (angles.y >= 90f && angles.y < 180f)
+            float westOffset;
+            float eastOffset;
+            float scrollX;
+            // -180f <= yAngle < 180f
+            float yAngle = angles.y < 180f ? angles.y : angles.y - 360f;
+            if (yAngle >= 0f)
             {
-                percent = 1.0f - ((360f - angles.y) / 180f);
-                scrollX = -width * percent;
+                float percent = 1.0f - yAngle / 180f;
+                scrollX = width * (percent - 1.0f);
 
-                westOffset = -width + halfScreenWidth;
-                eastOffset = halfScreenWidth;
-            }
-            else if (angles.y >= 0f && angles.y < 90f)
-            {
-                percent = 1.0f - ((360f - angles.y) / 180f);
-                scrollX = -width * percent;
-
-                westOffset = -width + halfScreenWidth;
-                eastOffset = westOffset - width;
-            }
-            else if (angles.y >= 180f && angles.y < 270f)
-            {
-                percent = 1.0f - (angles.y / 180f);
-                scrollX = width * percent;
-
-                westOffset = -width + halfScreenWidth;
-                eastOffset = halfScreenWidth;
-            }
-            else// if (angles.y >= 270f && angles.y < 360f)
-            {
-                percent = 1.0f - (angles.y / 180f);
-                scrollX = width * percent;
-
-                eastOffset = halfScreenWidth;
-                westOffset = eastOffset + width;
-            }
-
-            // Scroll up-down
-            float horizonY = -Screen.height + (Screen.height * skyHorizon);
-            float scrollY = horizonY;
-            if (angles.x >= 270f && angles.x < 360f)
-            {
-                // Scroll down until top of sky is aligned with top of screen
-                percent = (360f - angles.x) / 75f;
-                scrollY += height * percent;
-                if (scrollY > 0) scrollY = 0;
+                // westRect center
+                westOffset = halfScreenWidth;
+                if (yAngle < 90f)
+                    // eastRect to the left of westRect
+                    eastOffset = halfScreenWidth - width;
+                else
+                    // eastRect to the right of westRect
+                    eastOffset = halfScreenWidth + width;
             }
             else
             {
-                // Keep scrolling up
-                percent = angles.x / 75f;
-                scrollY -= height * percent;
+                float percent = -yAngle / 180f;
+                scrollX = width * (percent - 1.0f);
+
+                // eastRect center
+                eastOffset = halfScreenWidth;
+                if (yAngle < -90f)
+                    // westRect to the left of eastRect
+                    westOffset = halfScreenWidth - width;
+                else
+                    // westRect to the right of eastRect
+                    westOffset = halfScreenWidth + width;
             }
+
+            // Scroll up-down
+            // "baseScrollY" puts the bottom of the fake sky at the center of the screen.
+            float baseScrollY = -(height - Screen.height) - (Screen.height / 2);
+
+            // Zoom of the camera (1.0 at fov=90).
+            float zoom = 1f / Mathf.Tan((mainCamera.fieldOfView * 0.50f) * Mathf.Deg2Rad);
+            float angleXRadians = angles.x * Mathf.Deg2Rad;
+
+            // Y-shearing is the percent of the screen height to translate Y coordinates by.
+            float yShear = (Mathf.Tan(angleXRadians) * zoom) * 0.50f;
+            float scrollY = Mathf.Clamp(baseScrollY - (yShear * Screen.height), -height, 0f);
 
             westRect = new Rect(westOffset + scrollX, scrollY, width, height);
             eastRect = new Rect(eastOffset + scrollX, scrollY, width, height);
@@ -284,13 +275,13 @@ namespace DaggerfallWorkshop
             // Create new textures
             if (!IsNight || !showNightSky)
             {
-                westTexture = new Texture2D(dayWidth, dayHeight, TextureFormat.RGB24, false);
-                eastTexture = new Texture2D(dayWidth, dayHeight, TextureFormat.RGB24, false);
+                westTexture = new Texture2D(dayWidth, dayHeight, TextureFormat.ARGB32, false);
+                eastTexture = new Texture2D(dayWidth, dayHeight, TextureFormat.ARGB32, false);
             }
             else
             {
-                westTexture = new Texture2D(nightWidth, nightHeight, TextureFormat.RGB24, false);
-                eastTexture = new Texture2D(nightWidth, nightHeight, TextureFormat.RGB24, false);
+                westTexture = new Texture2D(nightWidth, nightHeight, TextureFormat.ARGB32, false);
+                eastTexture = new Texture2D(nightWidth, nightHeight, TextureFormat.ARGB32, false);
             }
 
             // Set pixels, flipping hemisphere if required
@@ -324,6 +315,11 @@ namespace DaggerfallWorkshop
             westTexture.Apply(false, true);
             eastTexture.Apply(false, true);
 
+            SetSkyFogColor(colors);
+        }
+
+        public void SetSkyFogColor(SkyColors colors)
+        {
             // Set camera clear colour
             cameraClearColor = colors.clearColor;
             myCamera.backgroundColor = ((cameraClearColor * SkyTintColor) * 2f) * SkyColorScale;

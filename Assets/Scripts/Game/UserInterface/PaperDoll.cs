@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -10,21 +10,14 @@
 //
 
 using UnityEngine;
-using System;
-using System.IO;
 using System.Linq;
-using System.Collections;
 using System.Collections.Generic;
 using DaggerfallConnect;
-using DaggerfallConnect.Arena2;
 using DaggerfallConnect.Utility;
-using DaggerfallConnect.FallExe;
-using DaggerfallWorkshop;
 using DaggerfallWorkshop.Utility;
-using DaggerfallWorkshop.Game.UserInterface;
-using DaggerfallWorkshop.Game.Player;
 using DaggerfallWorkshop.Game.Entity;
 using DaggerfallWorkshop.Game.Items;
+using DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects;
 
 namespace DaggerfallWorkshop.Game.UserInterface
 {
@@ -39,6 +32,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
         const int paperDollHeight = 184;
         const int waistHeight = 40;
 
+        DFSize backgroundFullSize = new DFSize(125, 198);
         Rect backgroundSubRect = new Rect(8, 7, paperDollWidth, paperDollHeight);
 
         #endregion
@@ -58,6 +52,9 @@ namespace DaggerfallWorkshop.Game.UserInterface
 
         Panel backgroundPanel = new Panel();
         Panel characterPanel = new Panel();
+
+        TextLabel[] armourLabels = new TextLabel[DaggerfallEntity.NumberBodyParts];
+        Vector2[] armourLabelPos = new Vector2[] { new Vector2(70, 12), new Vector2(20, 38), new Vector2(86, 38), new Vector2(12, 58), new Vector2(6, 90), new Vector2(18, 120), new Vector2(22, 168) };
 
         string lastBackgroundName = string.Empty;
 
@@ -91,6 +88,12 @@ namespace DaggerfallWorkshop.Game.UserInterface
             // Set initial display flags
             backgroundPanel.Enabled = showBackgroundLayer;
             characterPanel.Enabled = showCharacterLayer;
+
+            for (int bpIdx = 0; bpIdx < DaggerfallEntity.NumberBodyParts; bpIdx++)
+            {
+                armourLabels[bpIdx] = DaggerfallUI.AddDefaultShadowedTextLabel(armourLabelPos[bpIdx], characterPanel);
+                armourLabels[bpIdx].Text = "0";
+            }
         }
 
         #endregion
@@ -138,6 +141,8 @@ namespace DaggerfallWorkshop.Game.UserInterface
             paperDollTexture = ImageReader.GetTexture(paperDollColors, paperDollWidth, paperDollHeight);
             characterPanel.BackgroundTexture = paperDollTexture;
 
+            RefreshArmourValues(playerEntity);
+
             //// Create image from selection mask
             //DFPalette palette = new DFPalette();
             //byte value = 20;
@@ -151,7 +156,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
             //bitmap.Data = (byte[])paperDollIndices.Clone();
             //Color32[] testColors = bitmap.GetColor32(255);
             //string path = @"d:\test\blits\selection.png";
-            //Texture2D texture = ImageProcessing.MakeTexture2D(ref testColors, paperDollWidth, paperDollHeight, TextureFormat.RGBA32, false);
+            //Texture2D texture = ImageProcessing.MakeTexture2D(ref testColors, paperDollWidth, paperDollHeight, TextureFormat.ARGB32, false);
             //ImageProcessing.SaveTextureAsPng(texture, path);
         }
 
@@ -184,6 +189,17 @@ namespace DaggerfallWorkshop.Game.UserInterface
 
         #region Private Methods
 
+        // Refresh armour value labels
+        void RefreshArmourValues(PlayerEntity playerEntity)
+        {
+            for (int bpIdx = 0; bpIdx < DaggerfallEntity.NumberBodyParts; bpIdx++)
+            {
+                sbyte av = playerEntity.ArmorValues[bpIdx];
+                int bpAv = (100 - av) / 5;
+                armourLabels[bpIdx].Text = bpAv.ToString();
+            }
+        }
+
         // Clear paper doll colours and indices
         void ClearPaperDoll()
         {
@@ -198,14 +214,58 @@ namespace DaggerfallWorkshop.Game.UserInterface
         // Update player background panel
         void RefreshBackground(PlayerEntity entity)
         {
-            if (lastBackgroundName != entity.RaceTemplate.PaperDollBackground)
+            // Allow racial override background (vampire / transformed were-creature)
+            // If racial override is not present or returns null then standard racial background will be used
+            // The racial override has full control over which texture is displayed, such as when were-creature transformed or not
+            Texture2D customBackground;
+            RacialOverrideEffect racialOverride = GameManager.Instance.PlayerEffectManager.GetRacialOverrideEffect();
+            if (racialOverride != null && racialOverride.GetCustomPaperDollBackgroundTexture(entity, out customBackground))
             {
-                ImageData data = ImageReader.GetImageData(entity.RaceTemplate.PaperDollBackground, 0, 0, false, false);
-                Texture2D texture = ImageReader.GetSubTexture(data, backgroundSubRect);
+                backgroundPanel.BackgroundTexture = customBackground;
+                backgroundPanel.Size = new Vector2(paperDollWidth, paperDollHeight);
+                lastBackgroundName = string.Empty;
+                return;
+            }
 
-                backgroundPanel.BackgroundTexture = texture;
-                backgroundPanel.Size = new Vector2(texture.width, texture.height);
-                lastBackgroundName = entity.RaceTemplate.PaperDollBackground;
+            // Use standard racial background
+            string backgroundName = GetPaperDollBackground(entity);
+            if (lastBackgroundName != backgroundName)
+            {
+                Texture2D texture = ImageReader.GetTexture(backgroundName, 0, 0, false);
+                backgroundPanel.BackgroundTexture = ImageReader.GetSubTexture(texture, backgroundSubRect, backgroundFullSize);
+                backgroundPanel.Size = new Vector2(paperDollWidth, paperDollHeight);
+                lastBackgroundName = backgroundName;
+            }
+        }
+
+        readonly char[] regionBackgroundIdxChars =
+            {'3','1','2','2', '2','0','5','1', '5','2','1','1', '2','2','2','0', '2','0','2','2', '3','0','5','6', '2','2','2','2', '0','0','0','0',
+             '0','6','6','6', '0','6','6','0', '6','0','0','3', '3','3','3','3', '3','5','5','5', '5','1','3','3', '3','2','0','0', '2','3' };
+
+        string GetPaperDollBackground(PlayerEntity entity)
+        {
+            if (DaggerfallUnity.Settings.EnableGeographicBackgrounds)
+            {
+                PlayerGPS playerGPS = GameManager.Instance.PlayerGPS;
+                PlayerEnterExit playerEnterExit = GameManager.Instance.PlayerEnterExit;
+                DFPosition position = playerGPS.CurrentMapPixel;
+                int region = DaggerfallUnity.Instance.ContentReader.MapFileReader.GetPoliticIndex(position.X, position.Y) - 128;
+                if (region < 0 || region >= DaggerfallUnity.Instance.ContentReader.MapFileReader.RegionCount || region >= regionBackgroundIdxChars.Length)
+                    return entity.RaceTemplate.PaperDollBackground;
+
+                // Set background based on location.
+                if (playerGPS.IsPlayerInTown(true))
+                    return "SCBG04I0.IMG";                                          // Town
+                else if (playerEnterExit.IsPlayerInsideDungeon)
+                    return "SCBG07I0.IMG";                                          // Dungeon
+                else if (playerGPS.CurrentLocation.MapTableData.LocationType == DFRegion.LocationTypes.Graveyard && playerGPS.IsPlayerInLocationRect)
+                    return "SCBG08I0.IMG";                                          // Graveyard
+                else                            
+                    return "SCBG0" + regionBackgroundIdxChars[region] + "I0.IMG";   // Region
+            }
+            else
+            {
+                return entity.RaceTemplate.PaperDollBackground;
             }
         }
 
@@ -229,24 +289,43 @@ namespace DaggerfallWorkshop.Game.UserInterface
             }
         }
 
+        ImageData GetHeadImageData(PlayerEntity entity)
+        {
+            // Check for racial override head
+            ImageData customHead;
+            RacialOverrideEffect racialOverride = GameManager.Instance.PlayerEffectManager.GetRacialOverrideEffect();
+            if (racialOverride != null && racialOverride.GetCustomHeadImageData(entity, out customHead))
+                return customHead;
+
+            // Otherwise just get standard head based on gender and race
+            switch(entity.Gender)
+            {
+                default:
+                case Genders.Male:
+                    return ImageReader.GetImageData(entity.RaceTemplate.PaperDollHeadsMale, entity.FaceIndex, 0, true);
+                case Genders.Female:
+                    return ImageReader.GetImageData(entity.RaceTemplate.PaperDollHeadsFemale, entity.FaceIndex, 0, true);
+            }
+        }
+
+        // TODO: Allow for body racial overrides (e.g. werewolf in transformed state)
+
         // Copy body parts to target
         void BlitBody(PlayerEntity entity)
         {
             // Get gender-based body parts
             ImageData nudeBody = new ImageData();
             ImageData clothedBody = new ImageData();
-            ImageData head = new ImageData();
+            ImageData head = GetHeadImageData(entity);
             if (entity.Gender == Genders.Male)
             {
                 nudeBody = ImageReader.GetImageData(entity.RaceTemplate.PaperDollBodyMaleUnclothed, 0, 0, true);
                 clothedBody = ImageReader.GetImageData(entity.RaceTemplate.PaperDollBodyMaleClothed, 0, 0, true);
-                head = ImageReader.GetImageData(entity.RaceTemplate.PaperDollHeadsMale, entity.FaceIndex, 0, true);
             }
             else if (entity.Gender == Genders.Female)
             {
                 nudeBody = ImageReader.GetImageData(entity.RaceTemplate.PaperDollBodyFemaleUnclothed, 0, 0, true);
                 clothedBody = ImageReader.GetImageData(entity.RaceTemplate.PaperDollBodyFemaleClothed, 0, 0, true);
-                head = ImageReader.GetImageData(entity.RaceTemplate.PaperDollHeadsFemale, entity.FaceIndex, 0, true);
             }
             else
             {
@@ -374,7 +453,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
 
             //// Generate a test texture
             //string path = @"d:\test\blits\" + imageCounter++;
-            //Texture2D texture = ImageProcessing.MakeTexture2D(ref paperDollColors, paperDollWidth, paperDollHeight, TextureFormat.RGBA32, false);
+            //Texture2D texture = ImageProcessing.MakeTexture2D(ref paperDollColors, paperDollWidth, paperDollHeight, TextureFormat.ARGB32, false);
             //ImageProcessing.SaveTextureAsPng(texture, path);
         }
 

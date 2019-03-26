@@ -1,29 +1,45 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
 // Original Author: Gavin Clayton (interkarma@dfworkshop.net)
-// Contributors:    Nystul   
+// Contributors:    Nystul, Hazelnut
 // 
 // Notes:
 //
 
 using UnityEngine;
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.IO;
 using DaggerfallConnect;
-using DaggerfallConnect.Utility;
 using DaggerfallConnect.Arena2;
 using DaggerfallWorkshop.Utility;
+using DaggerfallWorkshop.Game;
+using DaggerfallWorkshop.Utility.AssetInjection;
+using DaggerfallWorkshop.Game.Serialization;
+using DaggerfallWorkshop.Game.Items;
+using DaggerfallWorkshop.Game.Banking;
+using DaggerfallWorkshop.Game.Guilds;
 
 namespace DaggerfallWorkshop
 {
     public class DaggerfallInterior : MonoBehaviour
     {
-        const int doorModelId = 9800;
+        const int ladderModelId = 41409;
+        const int propModelType = 3;
+
+        private const int posMask = 0x3FF;  // 10 bits
+
+        const uint houseContainerObjectGroup = 418;
+        const uint containerObjectGroupOffset = 41000;
+        static List<uint> shopShelvesObjectGroupIndices = new List<uint> { 5, 6, 11, 12, 13, 14, 15, 16, 17, 18, 19, 26, 28, 29, 31, 35, 36, 37, 40, 41, 42, 44, 46, 47, 48, 49, 808 };
+        static List<uint> houseContainerObjectGroupIndices = new List<uint> { 3, 4, 7, 8, 27, 32, 33, 34, 35, 37, 38, 50, 51 };
+
+        // Building data for map layout, indicates no activation components needed.
+        static PlayerGPS.DiscoveredBuilding mapBD = new PlayerGPS.DiscoveredBuilding {
+            buildingType = DFLocation.BuildingTypes.AllValid
+        };
 
         DaggerfallUnity dfUnity;
         DFBlock blockData;
@@ -31,9 +47,37 @@ namespace DaggerfallWorkshop
         ModelCombiner combiner = new ModelCombiner();
         ClimateBases climateBase = ClimateBases.Temperate;
         ClimateSeason climateSeason = ClimateSeason.Summer;
-        List<GameObject> markers = new List<GameObject>();
+        List<InteriorEditorMarker> markers = new List<InteriorEditorMarker>();
+        List<Vector3> spawnPoints = new List<Vector3>();
         StaticDoor entryDoor;
         Transform doorOwner;
+
+        public struct InteriorEditorMarker
+        {
+            public InteriorMarkerTypes type;
+            public GameObject gameObject;
+        }
+
+        public enum InteriorMarkerTypes
+        {
+            Rest = 4,
+            Enter = 8,
+            Treasure = 19,
+            LadderBottom = 21,
+            LadderTop = 22,
+        }
+
+        /// <summary>
+        /// Gets the scene name for the interior behind the given door.
+        /// </summary>
+        public static string GetSceneName(DFLocation location, StaticDoor door)
+        {
+            return GetSceneName(location.MapTableData.MapId, door.buildingKey);
+        }
+        public static string GetSceneName(int mapID, int buildingKey)
+        {
+            return string.Format("DaggerfallInterior [MapID={0}, BuildingKey={1}]", mapID, buildingKey);
+        }
 
         /// <summary>
         /// Gets transform owning door array.
@@ -64,6 +108,22 @@ namespace DaggerfallWorkshop
             get { return entryDoor; }
         }
 
+        /// <summary>
+        /// Gets array of markers in this building interior.
+        /// </summary>
+        public InteriorEditorMarker[] Markers
+        {
+            get { return markers.ToArray(); }
+        }
+
+        /// <summary>
+        /// Gets array of spawn points in this building interior.
+        /// </summary>
+        public Vector3[] SpawnPoints
+        {
+            get { return spawnPoints.ToArray(); }
+        }
+
         void Start()
         {
             dfUnity = DaggerfallUnity.Instance;
@@ -75,7 +135,7 @@ namespace DaggerfallWorkshop
         /// <param name="doorOwner">Parent transform owning door array.</param>
         /// <param name="door">Exterior door player clicked on.</param>
         /// <returns>True if successful.</returns>
-        public bool DoLayout(Transform doorOwner, StaticDoor door, ClimateBases climateBase)
+        public bool DoLayout(Transform doorOwner, StaticDoor door, ClimateBases climateBase, PlayerGPS.DiscoveredBuilding buildingData)
         {
             if (dfUnity == null)
                 dfUnity = DaggerfallUnity.Instance;
@@ -98,10 +158,11 @@ namespace DaggerfallWorkshop
                 throw new Exception(string.Format("No interior 3D models found for record index {0}", door.recordIndex), null);
 
             // Layout interior data
-            AddModels();
-            AddFlats();
-            AddPeople();
+            AddModels(buildingData);
+            AddFlats(buildingData);
+            AddPeople(buildingData);
             AddActionDoors();
+            AddSpawnPoints();
 
             return true;
         }
@@ -135,10 +196,7 @@ namespace DaggerfallWorkshop
                 throw new Exception(string.Format("No interior 3D models found for record index {0}", door.recordIndex), null);
 
             // Layout interior data
-            AddModels();
-            //AddFlats();
-            //AddPeople();
-            //AddActionDoors();
+            AddModels(mapBD);
 
             return true;
         }
@@ -151,22 +209,105 @@ namespace DaggerfallWorkshop
         /// <returns>True if successful.</returns>
         public bool FindClosestEnterMarker(Vector3 playerPos, out Vector3 closestMarkerOut)
         {
-            if (markers.Count == 0)
+            bool foundOne = false;
+            float minDistance = float.MaxValue;
+            closestMarkerOut = Vector3.zero;
+            for (int i = 0; i < markers.Count; i++)
+            {
+                // Must be an enter marker 199.8
+                // Sometimes marker 199.4 is used where the 199.8 enter marker should be
+                // Being a little forgiving and also accepting 199.4 as enter marker
+                if (markers[i].type != InteriorMarkerTypes.Enter && markers[i].type != InteriorMarkerTypes.Rest)
+                    continue;
+
+                // Refine to closest enter marker
+                float distance = Vector3.Distance(playerPos, markers[i].gameObject.transform.position);
+                if (distance < minDistance || !foundOne)
+                {
+                    closestMarkerOut = markers[i].gameObject.transform.position;
+                    minDistance = distance;
+                    foundOne = true;
+                }
+            }
+
+            if (!foundOne)
             {
                 closestMarkerOut = Vector3.zero;
                 return false;
             }
 
-            float minDistance = float.MaxValue;
-            closestMarkerOut = markers[0].transform.position;
+            return true;
+        }
+
+        /// <summary>
+        /// Find a specific marker. Will stop searching at first item found, or at a random-ish marker if random=true.
+        /// </summary>
+        /// <returns>True if at least one marker found.</returns>
+        public bool FindMarker(out Vector3 markerOut, InteriorMarkerTypes type, bool random = false)
+        {
+            markerOut = Vector3.zero;
+
             for (int i = 0; i < markers.Count; i++)
             {
-                float distance = Vector3.Distance(playerPos, markers[i].transform.position);
-                if (distance < minDistance)
+                if (markers[i].type == type)
                 {
-                    closestMarkerOut = markers[i].transform.position;
-                    minDistance = distance;
+                    markerOut = markers[i].gameObject.transform.position;
+                    if (!random || UnityEngine.Random.Range(0, 2) == 0)
+                        return true;
                 }
+            }
+
+            return !(markerOut == Vector3.zero);
+        }
+
+        /// <summary>
+        /// Find all marker positions of a specific type.
+        /// </summary>
+        public Vector3[] FindMarkers(InteriorMarkerTypes type)
+        {
+            List<Vector3> markerResults = new List<Vector3>();
+
+            for (int i = 0; i < markers.Count; i++)
+            {
+                if (markers[i].type == type)
+                    markerResults.Add(markers[i].gameObject.transform.position);
+            }
+
+            return markerResults.ToArray();
+        }
+
+        /// <summary>
+        /// Finds closest marker to player position.
+        /// </summary>
+        /// <param name="closestMarkerOut">Closest marker of specified type to player if found.</param>
+        /// <param name="type">Marker type.</param>
+        /// <param name="playerPos">Player position.</param>
+        /// <returns>True if successful.</returns>
+        public bool FindClosestMarker(out Vector3 closestMarkerOut, InteriorMarkerTypes type, Vector3 playerPos)
+        {
+            bool foundOne = false;
+            float minDistance = float.MaxValue;
+            closestMarkerOut = Vector3.zero;
+            for (int i = 0; i < markers.Count; i++)
+            {
+                // Exclude markers of incorrect type
+                if (markers[i].type != type)
+                    continue;
+
+                // Refine to closest marker
+                float distance = Vector3.Distance(playerPos, markers[i].gameObject.transform.position);
+                if (distance < minDistance || !foundOne)
+                {
+                    closestMarkerOut = markers[i].gameObject.transform.position;
+                    minDistance = distance;
+                    foundOne = true;
+                }
+            }
+
+            if (!foundOne)
+            {
+                closestMarkerOut = Vector3.zero;
+                return false;
             }
 
             return true;
@@ -177,7 +318,7 @@ namespace DaggerfallWorkshop
         /// <summary>
         /// Add interior models.
         /// </summary>
-        private void AddModels()
+        private void AddModels(PlayerGPS.DiscoveredBuilding buildingData)
         {
             List<StaticDoor> doors = new List<StaticDoor>();
             GameObject node = new GameObject("Models");
@@ -189,13 +330,16 @@ namespace DaggerfallWorkshop
             combiner.NewCombiner();
             foreach (DFBlock.RmbBlock3dObjectRecord obj in recordData.Interior.Block3dObjectRecords)
             {
+                bool stopCombine = false;
+
                 // Get model data
                 ModelData modelData;
                 dfUnity.MeshReader.GetModelData(obj.ModelIdNum, out modelData);
 
                 // Get model position by type (3 seems to indicate props/clutter)
+                // Also stop these from being combined as some may carry a loot container
                 Vector3 modelPosition;
-                if (obj.ObjectType == 3)
+                if (obj.ObjectType == propModelType)
                 {
                     // Props axis needs to be transformed to lowest Y point
                     Vector3 bottom = modelData.Vertices[0];
@@ -206,11 +350,16 @@ namespace DaggerfallWorkshop
                     }
                     modelPosition = new Vector3(obj.XPos, obj.YPos, obj.ZPos) * MeshReader.GlobalScale;
                     modelPosition += new Vector3(0, -bottom.y, 0);
+                    stopCombine = true;
                 }
                 else
                 {
                     modelPosition = new Vector3(obj.XPos, -obj.YPos, obj.ZPos) * MeshReader.GlobalScale;
                 }
+
+                // Stop special object from being combined
+                if (obj.ModelIdNum == ladderModelId)
+                    stopCombine = true;
 
                 // Get model transform
                 Vector3 modelRotation = new Vector3(0, -obj.YRotation / BlocksFile.RotationDivisor, 0);
@@ -220,22 +369,40 @@ namespace DaggerfallWorkshop
                 if (modelData.Doors != null)
                     doors.AddRange(GameObjectHelper.GetStaticDoors(ref modelData, entryDoor.blockIndex, entryDoor.recordIndex, modelMatrix));
 
-                // Combine or add
-                if (dfUnity.Option_CombineRMB)
-                {
-                    combiner.Add(ref modelData, modelMatrix);
-                }
-                else
-                {
-                    // Add GameObject
-                    GameObject go = GameObjectHelper.CreateDaggerfallMeshGameObject(obj.ModelIdNum, node.transform, dfUnity.Option_SetStaticFlags);
-                    go.transform.position = modelMatrix.GetColumn(3);
-                    go.transform.rotation = GameObjectHelper.QuaternionFromMatrix(modelMatrix);
+                // Inject custom GameObject if available
+                GameObject go = MeshReplacement.ImportCustomGameobject(obj.ModelIdNum, node.transform, modelMatrix);
 
-                    // Update climate
-                    DaggerfallMesh dfMesh = go.GetComponent<DaggerfallMesh>();
-                    dfMesh.SetClimate(climateBase, climateSeason, WindowStyle.Disabled);
+                // Otherwise use Daggerfall mesh - combine or add
+                if (!go)
+                {
+                    if (dfUnity.Option_CombineRMB && !stopCombine)
+                    {
+                        combiner.Add(ref modelData, modelMatrix);
+                    }
+                    else
+                    {
+                        // Add individual GameObject
+                        go = GameObjectHelper.CreateDaggerfallMeshGameObject(obj.ModelIdNum, node.transform, dfUnity.Option_SetStaticFlags);
+                        go.transform.position = modelMatrix.GetColumn(3);
+                        go.transform.rotation = GameObjectHelper.QuaternionFromMatrix(modelMatrix);
+
+                        // Update climate
+                        DaggerfallMesh dfMesh = go.GetComponent<DaggerfallMesh>();
+                        dfMesh.SetClimate(climateBase, climateSeason, WindowStyle.Disabled);
+                    }
                 }
+
+                // Make ladder collider convex
+                if (obj.ModelIdNum == ladderModelId)
+                {
+                    var meshCollider = go.GetComponent<MeshCollider>();
+                    if (meshCollider) meshCollider.convex = true;
+                    go.AddComponent<DaggerfallLadder>();
+                }
+
+                // Optionally add action objects to specific furniture items (e.g. loot containers), except when laying out map (buildingType=AllValid)
+                if (obj.ObjectType == propModelType && buildingData.buildingType != DFLocation.BuildingTypes.AllValid)
+                    AddFurnitureAction(obj, go, buildingData);
             }
 
             // Add combined GameObject
@@ -257,10 +424,73 @@ namespace DaggerfallWorkshop
             c.Doors = doors.ToArray();
         }
 
+        private void AddFurnitureAction(DFBlock.RmbBlock3dObjectRecord obj, GameObject go, PlayerGPS.DiscoveredBuilding buildingData)
+        {
+            // Create unique LoadID for save system, using 9 lsb and the sign bit from each coord pos int
+            ulong loadID = ((ulong) buildingData.buildingKey) << 30 |
+                            (uint)(obj.XPos << 1 & posMask) << 20 |
+                            (uint)(obj.YPos << 1 & posMask) << 10 |
+                            (uint)(obj.ZPos << 1 & posMask);
+
+            DFLocation.BuildingTypes buildingType = buildingData.buildingType;
+
+            // Handle shelves:
+            if (shopShelvesObjectGroupIndices.Contains(obj.ModelIdNum - containerObjectGroupOffset))
+            {
+                if (RMBLayout.IsShop(buildingType))
+                {
+                    // Shop shelves, so add a DaggerfallLoot component
+                    DaggerfallLoot loot = go.AddComponent<DaggerfallLoot>();
+                    if (loot)
+                    {
+                        // Set as shelves, assign load id and create serialization object
+                        loot.ContainerType = LootContainerTypes.ShopShelves;
+                        loot.ContainerImage = InventoryContainerImages.Shelves;
+                        loot.LoadID = loadID;
+                        if (SaveLoadManager.Instance != null)
+                            go.AddComponent<SerializableLootContainer>();
+                    }
+                }
+                else if (buildingType == DFLocation.BuildingTypes.Library ||
+                         buildingType == DFLocation.BuildingTypes.GuildHall ||
+                         buildingType == DFLocation.BuildingTypes.Temple)
+                {
+                    // Bookshelves, add DaggerfallBookshelf component
+                    go.AddComponent<DaggerfallBookshelf>();
+                }
+                else if (DaggerfallBankManager.IsHouseOwned(buildingData.buildingKey))
+                {   // Player owned house, everything is a house container
+                    MakeHouseContainer(obj, go, loadID);
+                }
+            }
+            // Handle generic furniture as (private) house containers:
+            // (e.g. shelves, boxes, wardrobes, drawers etc)
+            else if (obj.ModelIdNum / 100 == houseContainerObjectGroup ||
+                     houseContainerObjectGroupIndices.Contains(obj.ModelIdNum - containerObjectGroupOffset))
+            {
+                MakeHouseContainer(obj, go, loadID);
+            }
+        }
+
+        private static void MakeHouseContainer(DFBlock.RmbBlock3dObjectRecord obj, GameObject go, ulong loadID)
+        {
+            DaggerfallLoot loot = go.AddComponent<DaggerfallLoot>();
+            if (loot)
+            {
+                // Set as house container (private furniture) and assign load id
+                loot.ContainerType = LootContainerTypes.HouseContainers;
+                loot.ContainerImage = InventoryContainerImages.Shelves;
+                loot.LoadID = loadID;
+                loot.TextureRecord = (int)obj.ModelIdNum % 100;
+                if (SaveLoadManager.Instance != null)
+                    go.AddComponent<SerializableLootContainer>();
+            }
+        }
+
         /// <summary>
         /// Add interior flats.
         /// </summary>
-        private void AddFlats()
+        private void AddFlats(PlayerGPS.DiscoveredBuilding buildingData)
         {
             GameObject node = new GameObject("Interior Flats");
             node.transform.parent = this.transform;
@@ -269,26 +499,68 @@ namespace DaggerfallWorkshop
             markers.Clear();
             foreach (DFBlock.RmbBlockFlatObjectRecord obj in recordData.Interior.BlockFlatObjectRecords)
             {
+                // Calculate position
+                Vector3 billboardPosition = new Vector3(obj.XPos, -obj.YPos, obj.ZPos) * MeshReader.GlobalScale;
+
+                // Import custom 3d gameobject instead of flat
+                if (MeshReplacement.ImportCustomFlatGameobject(obj.TextureArchive, obj.TextureRecord, billboardPosition, node.transform) != null)
+                    continue;
+
                 // Spawn billboard gameobject
                 GameObject go = GameObjectHelper.CreateDaggerfallBillboardGameObject(obj.TextureArchive, obj.TextureRecord, node.transform);
 
                 // Set position
                 DaggerfallBillboard dfBillboard = go.GetComponent<DaggerfallBillboard>();
-                go.transform.position = new Vector3(obj.XPos, -obj.YPos, obj.ZPos) * MeshReader.GlobalScale;
+                go.transform.position = billboardPosition;
                 go.transform.position += new Vector3(0, dfBillboard.Summary.Size.y / 2, 0);
 
-                // Add to enter marker list, which is TEXTURE.199, index 8.
-                // Sometimes marker 199.4 is used where the 199.8 enter marker should be
-                // Being a little forgiving and also accepting 199.4 as enter marker
-                // Will add more of these cases if I find them
-                if (obj.TextureArchive == TextureReader.EditorFlatsTextureArchive && (obj.TextureRecord == 8 || obj.TextureRecord == 4))
-                    markers.Add(go);
+                // Add editor markers to list
+                if (obj.TextureArchive == TextureReader.EditorFlatsTextureArchive)
+                {
+                    InteriorEditorMarker marker = new InteriorEditorMarker();
+                    marker.type = (InteriorMarkerTypes)obj.TextureRecord;
+                    marker.gameObject = go;
+                    markers.Add(marker);
+
+                    // Add loot containers for treasure markers (always use pile of clothes icon)
+                    if (marker.type == InteriorMarkerTypes.Treasure)
+                    {
+                        // Create unique LoadID for save system, using 9 lsb and the sign bit from each coord pos int
+                        ulong loadID = ((ulong) buildingData.buildingKey) << 30 |
+                                        (uint)(obj.XPos << 1 & posMask) << 20 |
+                                        (uint)(obj.YPos << 1 & posMask) << 10 |
+                                        (uint)(obj.ZPos << 1 & posMask);
+
+                        DaggerfallLoot loot = GameObjectHelper.CreateLootContainer(
+                            LootContainerTypes.RandomTreasure,
+                            InventoryContainerImages.Chest,
+                            billboardPosition,
+                            node.transform,
+                            DaggerfallLootDataTables.clothingArchive,
+                            0, loadID);
+
+                        if (!LootTables.GenerateLoot(loot, (int) GameManager.Instance.PlayerGPS.CurrentLocationType))
+                            DaggerfallUnity.LogMessage(string.Format("DaggerfallInterior: Location type {0} is out of range or unknown.", GameManager.Instance.PlayerGPS.CurrentLocationType), true);
+                    }
+                }
 
                 // Add point lights
                 if (obj.TextureArchive == TextureReader.LightsTextureArchive)
                 {
                     AddLight(obj, go.transform);
                 }
+            }
+        }
+
+        /// <summary>
+        /// This data appears to be spawn/waypoint data for placing interior enemies.
+        /// </summary>
+        private void AddSpawnPoints()
+        {
+            foreach(DFBlock.RmbBlockSection3Record obj in recordData.Interior.BlockSection3Records)
+            {
+                Vector3 spawnPosition = new Vector3(obj.XPos, -obj.YPos, obj.ZPos) * MeshReader.GlobalScale;
+                spawnPoints.Add(spawnPosition);
             }
         }
 
@@ -527,21 +799,60 @@ namespace DaggerfallWorkshop
         /// <summary>
         /// Add interior people flats.
         /// </summary>
-        private void AddPeople()
+        private void AddPeople(PlayerGPS.DiscoveredBuilding buildingData)
         {
             GameObject node = new GameObject("People Flats");
             node.transform.parent = this.transform;
+            bool isMemberOfBuildingGuild = GameManager.Instance.GuildManager.GetGuild(buildingData.factionID).IsMember();
 
             // Add block flats
             foreach (DFBlock.RmbBlockPeopleRecord obj in recordData.Interior.BlockPeopleRecords)
             {
+                // Calculate position
+                Vector3 billboardPosition = new Vector3(obj.XPos, -obj.YPos, obj.ZPos) * MeshReader.GlobalScale;
+
+                // Import 3D character instead of billboard
+                if (MeshReplacement.ImportCustomFlatGameobject(obj.TextureArchive, obj.TextureRecord, billboardPosition, node.transform) != null)
+                    continue;
+
                 // Spawn billboard gameobject
                 GameObject go = GameObjectHelper.CreateDaggerfallBillboardGameObject(obj.TextureArchive, obj.TextureRecord, node.transform);
 
                 // Set position
                 DaggerfallBillboard dfBillboard = go.GetComponent<DaggerfallBillboard>();
-                go.transform.position = new Vector3(obj.XPos, -obj.YPos, obj.ZPos) * MeshReader.GlobalScale;
+                go.transform.position = billboardPosition;
                 go.transform.position += new Vector3(0, dfBillboard.Summary.Size.y / 2, 0);
+
+                // Add RMB data to billboard
+                dfBillboard.SetRMBPeopleData(obj);
+
+                // Add StaticNPC behaviour
+                StaticNPC npc = go.AddComponent<StaticNPC>();
+                npc.SetLayoutData(obj, entryDoor.buildingKey);
+
+                // Disable people if shop or building is closed
+                DFLocation.BuildingTypes buildingType = buildingData.buildingType;
+                if ((RMBLayout.IsShop(buildingType) && !GameManager.Instance.PlayerEnterExit.IsPlayerInsideOpenShop) ||
+                    (buildingType <= DFLocation.BuildingTypes.Palace && !RMBLayout.IsShop(buildingType) && !PlayerActivate.IsBuildingOpen(buildingType)))
+                {
+                    go.SetActive(false);
+                }
+                // Disable people if player owns this house
+                else if (DaggerfallBankManager.IsHouseOwned(buildingData.buildingKey))
+                {
+                    go.SetActive(false);
+                }
+                // Disable people if this is TG/DB house and player is not a member
+                else if (buildingData.buildingType == DFLocation.BuildingTypes.House2 && buildingData.factionID != 0 && !isMemberOfBuildingGuild)
+                {
+                    go.SetActive(false);
+                }
+                // Disable people if they are TG spymaster, but not in a legit TG house (TODO: spot any other instances for TG/DB)
+                else if (buildingData.buildingType == DFLocation.BuildingTypes.House2 && buildingData.factionID == 0 &&
+                         npc.Data.factionID == (int)GuildNpcServices.TG_Spymaster)
+                {
+                    go.SetActive(false);
+                }
             }
         }
 
@@ -550,21 +861,26 @@ namespace DaggerfallWorkshop
         /// </summary>
         private void AddActionDoors()
         {
+            // Using 9000-9005 here but identical door models are also found at 900x, 910x, through to 980x
+            // They seem to be duplicate models but can have different model origins so not all ranges are suitable
+            const int doorModelBaseId = 9000;
+
             GameObject actionDoorsNode = new GameObject("Action Doors");
             actionDoorsNode.transform.parent = this.transform;
 
             foreach (DFBlock.RmbBlockDoorRecord obj in recordData.Interior.BlockDoorRecords)
             {
                 // Create unique LoadID for save sytem
-                ulong loadID = (ulong)(blockData.Position + obj.This);
+                ulong loadID = (ulong)(blockData.Position + obj.Position);
 
                 // Get model transform
                 Vector3 modelRotation = new Vector3(0, -obj.YRotation / BlocksFile.RotationDivisor, 0);
                 Vector3 modelPosition = new Vector3(obj.XPos, -obj.YPos, obj.ZPos) * MeshReader.GlobalScale;
 
-                // Instantiate door prefab and add model
+                // Instantiate door prefab and add model - DoorModelIndex is modulo to known-good range just in case
+                uint modelId = (uint)(doorModelBaseId + obj.DoorModelIndex % 5);
                 GameObject go = GameObjectHelper.InstantiatePrefab(dfUnity.Option_InteriorDoorPrefab.gameObject, string.Empty, actionDoorsNode.transform, Vector3.zero);
-                GameObjectHelper.CreateDaggerfallMeshGameObject(doorModelId, actionDoorsNode.transform, false, go, true);
+                GameObjectHelper.CreateDaggerfallMeshGameObject(modelId, actionDoorsNode.transform, false, go, true);
 
                 // Resize box collider to new mesh bounds
                 BoxCollider boxCollider = go.GetComponent<BoxCollider>();
@@ -579,13 +895,44 @@ namespace DaggerfallWorkshop
                 go.transform.rotation = Quaternion.Euler(modelRotation);
                 go.transform.position = modelPosition;
 
+                // Update climate
+                DaggerfallMesh dfMesh = go.GetComponent<DaggerfallMesh>();
+                dfMesh.SetClimate(climateBase, climateSeason, WindowStyle.Disabled);
+
                 // Get action door script
                 DaggerfallActionDoor actionDoor = go.GetComponent<DaggerfallActionDoor>();
 
                 // Assign loadID
                 if (actionDoor)
                     actionDoor.LoadID = loadID;
+
+                if (SaveLoadManager.Instance != null)
+                    go.AddComponent<SerializableActionDoor>();
             }
+        }
+
+        #endregion
+
+        #region Helpers
+
+        /// <summary>
+        /// Helper to get a random spawn point from interior list (if present).
+        /// </summary>
+        /// <param name="localPositionOut">Local position of spawn point.</param>
+        /// <returns>True if spawn point found.</returns>
+        public bool GetRandomSpawnPoint(out Vector3 localPositionOut)
+        {
+            // Handle no spawn points
+            if (spawnPoints.Count == 0)
+            {
+                // Inform caller to use a fallback
+                localPositionOut = Vector3.zero;
+                return false;
+            }
+
+            // Return a random spawn point
+            localPositionOut = spawnPoints[UnityEngine.Random.Range(0, spawnPoints.Count)];
+            return true;
         }
 
         #endregion

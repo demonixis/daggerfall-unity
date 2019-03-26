@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -201,8 +201,7 @@ namespace DaggerfallWorkshop
             if (solveTangents) TangentSolver(mesh);
             if (lightmapUVs) AddLightmapUVs(mesh);
             mesh.RecalculateBounds();
-            mesh.Optimize();
-
+            
             return mesh;
         }
 
@@ -282,7 +281,6 @@ namespace DaggerfallWorkshop
             if (solveTangents) TangentSolver(mesh);
             if (lightmapUVs) AddLightmapUVs(mesh);
             mesh.RecalculateBounds();
-            mesh.Optimize();
 
             return mesh;
         }
@@ -480,7 +478,6 @@ namespace DaggerfallWorkshop
             if (solveTangents) TangentSolver(mesh);
             if (lightmapUVs) AddLightmapUVs(mesh);
             mesh.RecalculateBounds();
-            mesh.Optimize();
 
             return mesh;
         }
@@ -560,15 +557,18 @@ namespace DaggerfallWorkshop
             const int BuildingDoors = 74;
             const int DungeonEnterDoors = 56;
             const int DungeonRuinEnterDoors = 331;
+            const int ScourgExterior = 156;
             const int DungeonExitDoors = 95;
+            //const int dungeonFloorRecord = 2;
 
             // Allocate arrays
             model.Vertices = new Vector3[model.DFMesh.TotalVertices];
             model.Normals = new Vector3[model.DFMesh.TotalVertices];
             model.UVs = new Vector2[model.DFMesh.TotalVertices];
 
-            // Door list
+            // Static door and dungeon floor lists
             List<ModelDoor> modelDoors = new List<ModelDoor>();
+            //List<DFMesh.DFPlane> dungeonFloors = new List<DFMesh.DFPlane>();
 
             // Loop through all submeshes
             int vertexCount = 0;
@@ -579,16 +579,15 @@ namespace DaggerfallWorkshop
                 dfUnity.MaterialReader.GetCachedMaterial(dfSubMesh.TextureArchive, dfSubMesh.TextureRecord, 0, out cm);
                 Vector2 sz = cm.recordSizes[0];
 
+                // Get texture archive for this submesh as base climate
+                int submeshTextureArchive = dfSubMesh.TextureArchive;
+                int baseTextureArchive = (submeshTextureArchive - (submeshTextureArchive / 100) * 100);
+
                 // Get base climate archive for door check
-                // All base door textures are < 100, except dungeon ruins doors
-                int doorArchive = dfSubMesh.TextureArchive;
-                if (doorArchive > 100 && doorArchive != DungeonRuinEnterDoors)
-                {
-                    // Reduce to base texture set
-                    // This shifts all building climate doors to the same index
-                    ClimateTextureInfo ci = ClimateSwaps.GetClimateTextureInfo(dfSubMesh.TextureArchive);
-                    doorArchive = (int)ci.textureSet;
-                }
+                // All base door textures are > 100 with some exceptions
+                int doorArchive = submeshTextureArchive;
+                if (doorArchive > 100 && doorArchive != DungeonRuinEnterDoors && doorArchive != ScourgExterior)
+                    doorArchive = baseTextureArchive;
 
                 // Check if this is a door archive
                 bool doorFound = false;
@@ -615,6 +614,11 @@ namespace DaggerfallWorkshop
                         doorType = DoorTypes.DungeonExit;
                         break; 
                 }
+
+                //// Check if this is a dungeon floor
+                //bool dungeonFloorFound = false;
+                //if (baseTextureArchive >= 19 && baseTextureArchive <= 24 && dfSubMesh.TextureRecord == dungeonFloorRecord)
+                //    dungeonFloorFound = true;
 
                 // Loop through all planes in this submesh
                 int doorCount = 0;
@@ -645,6 +649,10 @@ namespace DaggerfallWorkshop
                         modelDoors.Add(modelDoor);
                     }
 
+                    //// If this a floor then store the polygon
+                    //if (dungeonFloorFound)
+                    //    dungeonFloors.Add(dfPlane);
+
                     // Copy each point in this plane to vertex buffer
                     foreach (DFMesh.DFPoint dfPoint in dfPlane.Points)
                     {
@@ -665,6 +673,7 @@ namespace DaggerfallWorkshop
 
             // Assign found doors
             model.Doors = modelDoors.ToArray();
+            //model.DungeonFloors = dungeonFloors.ToArray();
         }
 
         private void LoadIndices(ref ModelData model)

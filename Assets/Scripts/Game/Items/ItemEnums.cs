@@ -1,15 +1,13 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
 // Original Author: LypyL (lypyl@dfworkshop.net)
 // Contributors:    Gavin Clayton (interkarma@dfworkshop.net)
-// 
+//
 // Notes:
 //
-
-using System;
 
 namespace DaggerfallWorkshop.Game.Items
 {
@@ -30,34 +28,34 @@ namespace DaggerfallWorkshop.Game.Items
     {
         None = -1,
         Drugs = 0,
-        UselessItems1,
-        Armor,
-        Weapons,
-        MagicItems,
-        Artifacts,
-        MensClothing,
-        Books,
-        Error,                                      // Not sure what this is for - from Dagged
-        UselessItems2,
-        ReligiousItems,
-        Maps,
-        WomensClothing,
-        Paintings,
-        Gems,
-        PlantIngredients1,
-        PlantIngredients2,
-        CreatureIngredients1,
-        CreatureIngredients2,
-        CreatureIngredients3,
-        MiscellaneousIngredients1,
-        MetalIngredients,
-        MiscellaneousIngredients2,
-        Transportation,
-        Deeds,
-        Jewellery,
-        QuestItems,
-        MiscItems,
-        Currency,
+        UselessItems1 = 1,
+        Armor = 2,
+        Weapons = 3,
+        MagicItems = 4,
+        Artifacts = 5,
+        MensClothing = 6,
+        Books = 7,
+        Furniture = 8,
+        UselessItems2 = 9,
+        ReligiousItems = 10,
+        Maps = 11,
+        WomensClothing = 12,
+        Paintings = 13,
+        Gems = 14,
+        PlantIngredients1 = 15,
+        PlantIngredients2 = 16,
+        CreatureIngredients1 = 17,
+        CreatureIngredients2 = 18,
+        CreatureIngredients3 = 19,
+        MiscellaneousIngredients1 = 20,
+        MetalIngredients = 21,
+        MiscellaneousIngredients2 = 22,
+        Transportation = 23,
+        Deeds = 24,
+        Jewellery = 25,
+        QuestItems = 26,
+        MiscItems = 27,
+        Currency = 28,
     }
 
     /// <summary>
@@ -136,6 +134,41 @@ namespace DaggerfallWorkshop.Game.Items
         Feet = 26,              // Boots / Shoes / Sandals / etc.
     }
 
+    /// <summary>
+    /// Body parts, used for armor value calculations.
+    /// </summary>
+    public enum BodyParts
+    {
+        None = -1,
+        Head = 0,
+        RightArm = 1,
+        LeftArm = 2,
+        Chest = 3,
+        Hands = 4,
+        Legs = 5,
+        Feet = 6,
+    }
+
+    /// <summary>
+    /// Poison IDs. The first 8 are found on enemy weapons. The last 4 are created by ingesting drugs.
+    /// </summary>
+    public enum Poisons
+    {
+        None = -1,
+        Nux_Vomica = 128,
+        Arsenic = 129,
+        Moonseed = 130,
+        Drothweed = 131,
+        Somnalius = 132,
+        Pyrrhic_Acid = 133,
+        Magebane = 134,
+        Thyrwort = 135,
+        Indulcet = 136,
+        Sursum = 137,
+        Quaesto_Vil = 138,
+        Aegrotat = 139,
+    }
+
     public enum Drugs //checked
     {
         Indulcet = 78,
@@ -212,7 +245,7 @@ namespace DaggerfallWorkshop.Game.Items
         Oghma_Infinium = 5,
         Wabbajack = 6,
         Ring_of_Namira = 7,
-        Skull_of_Curroption = 8,
+        Skull_of_Corruption = 8,
         Azuras_Star = 9,
         Volendrung = 10,
         Warlocks_Ring = 11,
@@ -225,9 +258,8 @@ namespace DaggerfallWorkshop.Game.Items
         Ebony_Mail = 18,
         Auriels_Shield = 19,
         Spell_Breaker = 20,
-        Skeleton_Key = 21,
+        Skeletons_Key = 21,
         Ebony_Blade = 22,
-        Daves_Blade = 23,
     }
 
     public enum MensClothing  //check
@@ -275,16 +307,45 @@ namespace DaggerfallWorkshop.Game.Items
         Champion_straps = 181,
     }
 
-    public enum Books  //checked
+    public enum Books
     {
-        Book = 277,
-        Potion_recipe = 278,
-        Parchment = 279,
+        Book0 = 277,
+        Book1 = 277,
+        Book2 = 277,
+        Book3 = 277,
     }
 
-    public enum ERROR                               // ?
+    public enum Furniture
     {
-        ERROR,
+        Plain_single_bed = 217,
+        Fancy_single_bed = 218,
+        Plain_double_bed = 219,
+        Fancy_double_bed = 220,
+        Large_oak_table = 221,
+        Large_cherry_table = 222,
+        Large_mahogany_table = 223,
+        Large_teak_table = 224,
+        Small_oak_table = 225,
+        Small_cherry_table = 226,
+        Small_mahogany_table = 227,
+        Small_teak_table = 228,
+        Oak_chair = 229,
+        Cherry_chair = 230,
+        Mahogany_chair = 231,
+        Teak_chair = 232,
+        Curtains = 233,
+        Fancy_curtains = 234,
+        Large_pillow = 235,
+        Small_pillow = 236,
+        Small_plain_rug = 237,
+        Large_plain_rug = 238,
+        Small_fine_rug = 239,
+        Large_fine_rug = 240,
+        Large_tapestry = 241,
+        Medium_tapestry = 242,
+        Small_tapestry = 243,
+        Large_skins = 244,
+        Small_skins = 245,
     }
 
     public enum UselessItems2 //checked
@@ -304,7 +365,7 @@ namespace DaggerfallWorkshop.Game.Items
         Common_symbol = 260,
         Bell = 261,
         Holy_water = 262,
-        Tailsman = 263,
+        Talisman = 263,
         Religious_item = 264,
         Small_statue = 265,
         Icon = 267,
@@ -370,7 +431,7 @@ namespace DaggerfallWorkshop.Game.Items
         Sapphire = 2,
         Diamond = 3,
         Jade = 4,
-        Turquiose = 5,
+        Turquoise = 5,
         Malachite = 6,
         Amber = 7,
     }
@@ -447,7 +508,7 @@ namespace DaggerfallWorkshop.Game.Items
 
     public enum CreatureIngredients3 //checked
     {
-        Wearboar_tusk = 34,
+        Wereboar_tusk = 34,
         Nymph_hair = 36,
         Unicorn_horn = 37,
     }
@@ -482,8 +543,8 @@ namespace DaggerfallWorkshop.Game.Items
 
     public enum MiscellaneousIngredients2 //checked
     {
-        Ivory,
-        Pearl,
+        Ivory = 76,
+        Pearl = 77,
     }
 
     public enum Transportation  //Checked
@@ -532,7 +593,7 @@ namespace DaggerfallWorkshop.Game.Items
         Spellbook = 132,
         Soul_trap = 274,
         Letter_of_credit = 275,
-        //Ruby = 0,
+        Unused,
         Potion_recipe = 278,
         Dead_Body = 281,
         House_Deed = 285,

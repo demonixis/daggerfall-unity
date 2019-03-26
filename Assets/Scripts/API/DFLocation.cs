@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -11,8 +11,7 @@
 
 #region Using Statements
 using System;
-using System.Collections.Generic;
-using System.Text;
+using DaggerfallConnect.Arena2;
 #endregion
 
 namespace DaggerfallConnect
@@ -88,6 +87,7 @@ namespace DaggerfallConnect
         /// </summary>
         public enum BuildingTypes
         {
+            None = -1,
             Alchemist,
             HouseForSale,
             Armorer,
@@ -117,6 +117,8 @@ namespace DaggerfallConnect
             Special2 = 0xdf,
             Special3 = 0xf9,
             Special4 = 0xfa,
+            AnyHouse = 0xfffe,      // DaggerfallUnity: all valid house types
+            AllValid = 0xffff,      // DaggerfallUnity: all valid types
         }
 
         #endregion
@@ -205,7 +207,7 @@ namespace DaggerfallConnect
             Exterior_Barn_Snow = 172,
 
             // Interior sets
-            Interior_PalaceInt = 11,
+            Interior_CastleInt = 11,
             Interior_CityInt = 16,
             Interior_CryptA = 19,
             Interior_CryptB = 20,
@@ -257,6 +259,72 @@ namespace DaggerfallConnect
 
         #endregion
 
+        #region Holiday Enumerations
+
+        /// <summary>
+        /// Holiday ID numbers.
+        /// </summary>
+        public enum Holidays
+        {
+            None,
+            New_Life,
+            Scour_Day,
+            Ovanka,
+            South_Winds_Prayer,
+            Day_of_Lights,
+            Waking_Day,
+            Mad_Pelagius,
+            Othroktide,
+            Day_of_Release,
+            Hearts_Day,
+            Perserverance_Day,
+            Aduros_Nau,
+            First_Harvest,
+            Day_of_Waiting,
+            Flower_Day,
+            Festival_of_Blades,
+            Gardtide,
+            Day_of_the_Dead,
+            Day_of_Shame,
+            Jesters_Day,
+            Second_Harvest,
+            Marukhs_Day,
+            Fire_Festival,
+            Fishing_Day,
+            Drigh_RZimb,
+            Mid_Year,
+            Dancing_Day,
+            Tibedetha,
+            Merchants_Festival,
+            Divad_Etept,
+            Suns_Rest,
+            Fiery_Night,
+            Maiden_Katrica,
+            Koomu_Alazeri,
+            Feast_of_the_Tiger,
+            Appreciation_Day,
+            Harvest_End,
+            Tales_and_Tallow,
+            Khurat,
+            Riglametha,
+            Childrens_Day,
+            Dirij_Tereur,
+            Witches_Festival,
+            Broken_Diamonds,
+            Emperors_Birthday,
+            Serpents_Dance,
+            Moon_Festival,
+            Hel_Anseilak,
+            Warriors_Festival,
+            North_Winds_Festival,
+            Baranth_Do,
+            Chila,
+            Saturalia,
+            Old_Life_Festival, // Not used
+        }
+
+        #endregion
+
         #region Climate Structures
 
         /// <summary>
@@ -281,6 +349,12 @@ namespace DaggerfallConnect
 
             /// <summary>Texture archive index for base sky set.</summary>
             public int SkyBase;
+
+            /// <summary>The race of wandering NPCs in this subclimate.</summary>
+            public FactionFile.FactionRaces People;
+
+            /// <summary>The name bank of NPCs in this subclimate.</summary>
+            public FactionFile.FactionRaces Names;
         }
 
         #endregion
@@ -417,16 +491,26 @@ namespace DaggerfallConnect
             /// <summary>Used to generate building name.</summary>
             public UInt16 NameSeed;
 
-            /// <summary>Always 0.</summary>
-            public UInt64 NullValue1;
+            /// <summary>For taverns this is the time in game minutes when room rental will end.</summary>
+            public UInt32 ServiceTimeLimit;
 
-            /// <summary>Always 0.</summary>
-            public UInt64 NullValue2;
+            /// <summary>Unknown. Set to 1 after renting a tavern room</summary>
+            public UInt16 Unknown;
+
+            /// <summary>Unknown.</summary>
+            public UInt16 Unknown2;
+
+            /// <summary>Unknown.</summary>
+            public UInt32 Unknown3;
+
+            /// <summary>Unknown.</summary>
+            public UInt32 Unknown4;
 
             /// <summary>FactionId associated with building, or 0 if no faction.</summary>
             public UInt16 FactionId;
 
-            /// <summary>Generally increases with each building. Otherwise unknown.</summary>
+            /// <summary>Generally increases with each building.
+            /// Known use by classic is in identifying whether inside the player's house when trying to rest.</summary>
             public Int16 Sector;
 
             /// <summary>Should always be the same as LocationRecordElementHeader.LocationId.</summary>
@@ -462,6 +546,15 @@ namespace DaggerfallConnect
             /// <summary>Unknown.</summary>
             public Byte[] Unknown2;
 
+            /// <summary>Unknown.</summary>
+            public Byte Unknown3;
+
+            /// <summary>ASCII value for first letter in .RMB file name.</summary>
+            public Byte Letter1ForRMBName;
+
+            /// <summary>If non-zero, ships can be purchased at banks here. Also has an unknown use.</summary>
+            public Byte PortTownAndUnknown;
+
             /// <summary>Only first Width*Height elements will have any meaning.</summary>
             public Byte[] BlockIndex;
 
@@ -470,9 +563,12 @@ namespace DaggerfallConnect
 
             /// <summary>Only first Width*Height elements will have any meaning.</summary>
             public Byte[] BlockCharacter;
-            
+
+            /// <summary>Resolved block names.</summary>
+            public string[] BlockNames;
+
             /// <summary>Unknown.</summary>
-            public Byte[] Unknown3;
+            public Byte[] Unknown4;
 
             /// <summary>Always 0.</summary>
             public UInt64 NullValue1;
@@ -481,13 +577,13 @@ namespace DaggerfallConnect
             public Byte NullValue2;
 
             /// <summary>Unknown.</summary>
-            public UInt32[] Unknown4;
+            public UInt32[] Unknown5;
 
             /// <summary>Always 0.</summary>
             public Byte[] NullValue3;
 
             /// <summary>Unknown.</summary>
-            public UInt32 Unknown5;
+            public UInt32 Unknown6;
         }
 
         #endregion
@@ -537,7 +633,7 @@ namespace DaggerfallConnect
         {
             /// <summary>X position of block.</summary>
             public SByte X;
-            
+
             /// <summary>Y position of block.</summary>
             public SByte Z;
 
@@ -555,6 +651,12 @@ namespace DaggerfallConnect
 
             /// <summary>Name of RDB block.</summary>
             public String BlockName;
+
+            /// <summary>Height level of dungeon water. 10000 means no water.</summary>
+            public Int16 WaterLevel;
+
+            /// <summary>Whether this block is a main story castle area.</summary>
+            public Boolean CastleBlock;
         }
 
         #endregion

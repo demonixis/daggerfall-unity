@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -18,6 +18,7 @@ using DaggerfallConnect;
 using DaggerfallConnect.Arena2;
 using DaggerfallConnect.InternalTypes;
 using DaggerfallConnect.Utility;
+using DaggerfallWorkshop.Game;
 using DaggerfallWorkshop.Utility;
 
 namespace DaggerfallWorkshop
@@ -165,14 +166,13 @@ namespace DaggerfallWorkshop
                 // Import options
                 var propAddMeshColliders = Prop("Option_AddMeshColliders");
                 var propRMBGroundPlane = Prop("Option_RMBGroundPlane");
-                var propCloseCityGates = Prop("Option_CloseCityGates");
+                //var propCloseCityGates = Prop("Option_CloseCityGates");
                 EditorGUILayout.Space();
                 EditorGUILayout.LabelField("Import Options");
                 GUILayoutHelper.Indent(() =>
                 {
                     propAddMeshColliders.boolValue = EditorGUILayout.Toggle(new GUIContent("Add Colliders", "Add colliders where appropriate when building scenes. Decorative billboards will not receive colliders."), propAddMeshColliders.boolValue);
                     propRMBGroundPlane.boolValue = EditorGUILayout.Toggle(new GUIContent("RMB Ground Plane", "Adds RMB ground plane to imported city block (ignored by terrain system)."), propRMBGroundPlane.boolValue);
-                    propCloseCityGates.boolValue = EditorGUILayout.Toggle(new GUIContent("Close City Gates", "In walled cities use this flag to start city gates in closed position."), propCloseCityGates.boolValue);
                 });
 
                 // Prefab options
@@ -237,15 +237,30 @@ namespace DaggerfallWorkshop
                     });
                 });
 
+                // Dungeon Water
+                var propDungeonWaterPrefab = Prop("Option_DungeonWaterPrefab");
+                var propDungeonWaterPlaneSize = Prop("Option_DungeonWaterPlaneSize");
+                var propDungeonWaterPlaneOffset = Prop("Option_DungeonWaterPlaneOffset");
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Water");
+                GUILayoutHelper.Indent(() =>
+                {
+                    propDungeonWaterPrefab.objectReferenceValue = EditorGUILayout.ObjectField(new GUIContent("Dungeon Water", "Prefab for dungeon water."), propDungeonWaterPrefab.objectReferenceValue, typeof(GameObject), false);
+                    propDungeonWaterPlaneSize.vector3Value = EditorGUILayout.Vector3Field(new GUIContent("Plane Size", "Size of water plane in Unity units, used for scaling target relative to Daggerfall geometry import (i.e. MeshReader.GlobalScale)."), propDungeonWaterPlaneSize.vector3Value, null);
+                    propDungeonWaterPlaneOffset.vector3Value = EditorGUILayout.Vector3Field(new GUIContent("Plane Offset", "Amount to offset water plane so origin aligns with block origin and top aligns with water surface."), propDungeonWaterPlaneOffset.vector3Value, null);
+                });
+
                 // Optional
                 var propCityBlockPrefab = Prop("Option_CityBlockPrefab");
                 var propDungeonBlockPrefab = Prop("Option_DungeonBlockPrefab");
+                var propMobileNPCPrefab = Prop("Option_MobileNPCPrefab");
                 EditorGUILayout.Space();
                 EditorGUILayout.LabelField("Optional");
                 GUILayoutHelper.Indent(() =>
                 {
                     propCityBlockPrefab.objectReferenceValue = EditorGUILayout.ObjectField(new GUIContent("City Blocks", "Prefab for city blocks."), propCityBlockPrefab.objectReferenceValue, typeof(DaggerfallRMBBlock), false);
                     propDungeonBlockPrefab.objectReferenceValue = EditorGUILayout.ObjectField(new GUIContent("Dungeon Blocks", "Prefab for dungeon blocks."), propDungeonBlockPrefab.objectReferenceValue, typeof(DaggerfallRDBBlock), false);
+                    propMobileNPCPrefab.objectReferenceValue = EditorGUILayout.ObjectField(new GUIContent("Mobile NPCs", "Prefab for mobile NPCs in locations."), propMobileNPCPrefab.objectReferenceValue, typeof(MobilePersonMotor), false);
                 });
             });
 
@@ -300,7 +315,7 @@ namespace DaggerfallWorkshop
                             // Create block
                             if (propBlockName.stringValue.EndsWith(".RMB"))
                             {
-                                GameObjectHelper.CreateRMBBlockGameObject(propBlockName.stringValue, dfUnity.Option_RMBGroundPlane, dfUnity.Option_CityBlockPrefab);
+                                GameObjectHelper.CreateRMBBlockGameObject(propBlockName.stringValue, 0, 0, dfUnity.Option_RMBGroundPlane, dfUnity.Option_CityBlockPrefab);
                             }
                             else if (propBlockName.stringValue.EndsWith(".RDB"))
                             {

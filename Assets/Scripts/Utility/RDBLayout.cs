@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -19,6 +19,10 @@ using DaggerfallConnect.Utility;
 using DaggerfallConnect.Arena2;
 using DaggerfallWorkshop.Game;
 using DaggerfallWorkshop.Game.Serialization;
+using DaggerfallWorkshop.Utility;
+using DaggerfallWorkshop.Utility.AssetInjection;
+using DaggerfallWorkshop.Game.Questing;
+using DaggerfallWorkshop.Game.Items;
 
 namespace DaggerfallWorkshop.Utility
 {
@@ -135,7 +139,7 @@ namespace DaggerfallWorkshop.Utility
 
             // Use default texture table if one not specified
             if (textureTable == null)
-                textureTable = StaticTextureTables.DefaultTextureTable;
+                textureTable = DungeonTextureTables.DefaultTextureTable;
 
             // Create gameobject
             GameObject go;
@@ -211,7 +215,7 @@ namespace DaggerfallWorkshop.Utility
 
             // Use default texture table if one not specified
             if (textureTable == null)
-                textureTable = StaticTextureTables.DefaultTextureTable;
+                textureTable = DungeonTextureTables.DefaultTextureTable;
 
             // Add parent node
             GameObject actionDoorsNode = new GameObject("Action Doors");
@@ -232,7 +236,7 @@ namespace DaggerfallWorkshop.Utility
                         // Create unique LoadID for save sytem
                         ulong loadID = 0;
                         if (serialize)
-                            loadID = (ulong)(blockData.Position + obj.This);
+                            loadID = (ulong)(blockData.Position + obj.Position);
 
                         // Look for action doors
                         int modelReference = obj.Resources.ModelResource.ModelIndex;
@@ -295,7 +299,8 @@ namespace DaggerfallWorkshop.Utility
             ref DFBlock blockData,
             out DFBlock.RdbObject[] editorObjectsOut,
             out GameObject[] startMarkersOut,
-            out GameObject[] enterMarkersOut)
+            out GameObject[] enterMarkersOut,
+            DFRegion.DungeonTypes dungeonType)
         {
             List<DFBlock.RdbObject> editorObjects = new List<DFBlock.RdbObject>();
             List<GameObject> startMarkers = new List<GameObject>();
@@ -338,16 +343,36 @@ namespace DaggerfallWorkshop.Utility
                             else if (record == 8)
                                 enterMarkers.Add(flatObject);
 
+                            // Add special marker component for quest and item markers
+                            if (record == 11 || record == 18)
+                            {
+                                ulong markerID = (ulong)(blockData.Position + obj.Position);
+                                DaggerfallMarker marker = flatObject.AddComponent<DaggerfallMarker>();
+                                marker.MarkerID = markerID;
+                            }
+
                             //add editor flats to actionLinkDict
-                            if (!actionLinkDict.ContainsKey(obj.This))
+                            if (!actionLinkDict.ContainsKey(obj.Position))
                             {
                                 ActionLink link;
                                 link.gameObject = flatObject;
                                 link.nextKey = obj.Resources.FlatResource.NextObjectOffset;
                                 link.prevKey = -1;
-                                actionLinkDict.Add(obj.This, link);
+                                actionLinkDict.Add(obj.Position, link);
                             }
+                        }
 
+                        // Disable MeshRenderer is this is a fixed treasure flat
+                        // Will be restored in-place by AddFixedTreasure()
+                        if (archive == TextureReader.FixedTreasureFlatsArchive)
+                        {
+                            // Disable original marker appearance
+                            MeshRenderer meshRenderer = flatObject.GetComponent<MeshRenderer>();
+                            if (meshRenderer)
+                                meshRenderer.enabled = false;
+
+                            // Assign fixed treaure to this marker
+                            AssignFixedTreasure(flatObject, obj, ref blockData, dungeonType);
                         }
 
                         //add action component to flat if it has an action
@@ -355,7 +380,6 @@ namespace DaggerfallWorkshop.Utility
                         {
                             AddActionFlatHelper(flatObject, actionLinkDict, ref blockData, obj);
                         }
-
                     }
                 }
             }
@@ -370,6 +394,7 @@ namespace DaggerfallWorkshop.Utility
             GameObject go,
             DFBlock.RdbObject[] editorObjects,
             ref DFBlock blockData,
+            DFRegion.DungeonTypes dungeonType,
             bool serialize = true)
         {
             const int randomTreasureFlatIndex = 19;
@@ -391,8 +416,21 @@ namespace DaggerfallWorkshop.Utility
             {
                 // Add treasure flat
                 if (editorObjects[i].Resources.FlatResource.TextureRecord == randomTreasureFlatIndex)
-                    AddRandomTreasure(editorObjects[i], randomTreasureNode.transform, ref blockData, serialize);
+                    AddRandomTreasure(editorObjects[i], randomTreasureNode.transform, ref blockData, dungeonType, serialize);
             }
+        }
+
+        public static void AssignFixedTreasure(
+            GameObject parent,
+            DFBlock.RdbObject obj,
+            ref DFBlock blockData,
+            DFRegion.DungeonTypes dungeonType,
+            bool serialize = true)
+        {
+            // Add fixed treasure flat with same archive & record and use exact position
+            int archive = obj.Resources.FlatResource.TextureArchive;
+            int record = obj.Resources.FlatResource.TextureRecord;
+            AddRandomTreasure(obj, parent.transform, ref blockData, dungeonType, serialize, archive, record, false);
         }
 
         /// <summary>
@@ -405,6 +443,7 @@ namespace DaggerfallWorkshop.Utility
             GameObject go,
             DFBlock.RdbObject[] editorObjects,
             ref DFBlock blockData,
+            GameObject[] startMarkers,
             bool serialize = true)
         {
             const int fixedMonsterFlatIndex = 16;
@@ -430,7 +469,7 @@ namespace DaggerfallWorkshop.Utility
             {
                 // Add fixed enemy objects
                 if (editorObjects[i].Resources.FlatResource.TextureRecord == fixedMonsterFlatIndex)
-                    AddFixedRDBEnemy(editorObjects[i], fixedEnemiesNode.transform, ref blockData, serialize);
+                    AddFixedRDBEnemy(editorObjects[i], fixedEnemiesNode.transform, ref blockData, startMarkers, serialize);
             }
         }
 
@@ -450,6 +489,7 @@ namespace DaggerfallWorkshop.Utility
             DFRegion.DungeonTypes dungeonType,
             float monsterPower,
             ref DFBlock blockData,
+            GameObject[] startMarkers,
             int monsterVariance = 4,
             int seed = 0,
             bool serialize = true)
@@ -475,13 +515,71 @@ namespace DaggerfallWorkshop.Utility
             // Seed random generator
             UnityEngine.Random.InitState(seed);
 
-            // Iterate editor flats for enemies
-            for (int i = 0; i < editorObjects.Length; i++)
+            bool alternateRandomEnemySelection = DaggerfallUnity.Settings.AlternateRandomEnemySelection;
+
+            if (!alternateRandomEnemySelection) // Classic enemy selection
             {
-                // Add random enemy objects
-                if (editorObjects[i].Resources.FlatResource.TextureRecord == randomMonsterFlatIndex)
-                    AddRandomRDBEnemy(editorObjects[i], dungeonType, monsterPower, monsterVariance, randomEnemiesNode.transform, ref blockData, serialize);
+                // Set up enemy lists used by classic
+                DFRandom.srand(GameManager.Instance.PlayerGPS.CurrentLocation.Dungeon.RecordElement.Header.LocationId);
+                MobileTypes[] DungeonWaterEnemiesToPlace = new MobileTypes[256];
+                MobileTypes[] DungeonNonWaterEnemiesToPlace = new MobileTypes[256];
+
+                for (int i = 0; i < 256; ++i)
+                    DungeonNonWaterEnemiesToPlace[i] = ChooseRandomEnemyType(RandomEncounters.EncounterTables[(int)dungeonType]);
+                for (int i = 0; i < 256; ++i)
+                    DungeonWaterEnemiesToPlace[i] = ChooseRandomEnemyType(RandomEncounters.EncounterTables[19]);
+
+                // Iterate editor flats for enemies
+                for (int i = 0; i < editorObjects.Length; i++)
+                {
+                    // Add random enemy objects
+                    if (editorObjects[i].Resources.FlatResource.TextureRecord == randomMonsterFlatIndex)
+                        AddRandomRDBEnemyClassic(editorObjects[i], dungeonType, monsterPower, monsterVariance, randomEnemiesNode.transform, ref blockData, startMarkers, serialize, DungeonWaterEnemiesToPlace, DungeonNonWaterEnemiesToPlace);
+                }
             }
+            else // Alternate enemy selection (more randomized)
+            {
+                // Iterate editor flats for enemies
+                for (int i = 0; i < editorObjects.Length; i++)
+                {
+                    // Add random enemy objects
+                    if (editorObjects[i].Resources.FlatResource.TextureRecord == randomMonsterFlatIndex)
+                        AddRandomRDBEnemy(editorObjects[i], dungeonType, monsterPower, monsterVariance, randomEnemiesNode.transform, ref blockData, startMarkers, serialize);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Add dungeon water plane prefab to RDB block post layout.
+        /// This is called from DaggerfallDungeon layout as water level is available from map data, not RDB data.
+        /// </summary>
+        /// <param name="go">Parent block GameObject.</param>
+        /// <param name="nativeBlockWaterLevel">Native water level from map data.</param>
+        public static void AddWater(
+            GameObject parent,
+            Vector3 position,
+            short nativeBlockWaterLevel)
+        {
+            // Exit if no water present or prefab not set
+            if (nativeBlockWaterLevel == 10000 || DaggerfallUnity.Instance.Option_DungeonWaterPrefab.gameObject == null)
+                return;
+
+            // Instantiate water prefab to block parent
+            GameObject go = GameObjectHelper.InstantiatePrefab(DaggerfallUnity.Instance.Option_DungeonWaterPrefab.gameObject, "DungeonWater", parent.transform, position);
+
+            // Scale water plane to RDB dimensions
+            Vector3 prefabScale = DaggerfallUnity.Instance.Option_DungeonWaterPlaneSize;
+            go.transform.localScale = new Vector3(
+                1f / prefabScale.x * RDBSide,
+                1f,
+                1f / prefabScale.z * RDBSide);
+
+            // Align water plane to RDB origin
+            Vector3 prefabOffset = DaggerfallUnity.Instance.Option_DungeonWaterPlaneOffset;
+            go.transform.localPosition += new Vector3(
+                prefabOffset.x * (1f / prefabScale.x) * RDBSide,
+                nativeBlockWaterLevel * -1 * MeshReader.GlobalScale,
+                prefabOffset.z * (1f / prefabScale.x) * RDBSide);
         }
 
         #endregion
@@ -546,27 +644,31 @@ namespace DaggerfallWorkshop.Utility
                         // Check if model has an action record
                         bool hasAction = HasAction(obj);
 
-                        // Special handling for tapestries and banners
-                        // Some of these are so far out from wall player can become stuck behind them
-                        // Adding model invidually without collider to avoid problem
-                        // Not sure if these object ever actions, but bypass this hack if they do
-                        if (modelId >= minTapestryID && modelId <= maxTapestryID && !hasAction)
-                        {
-                            AddStandaloneModel(dfUnity, ref modelData, modelMatrix, modelsParent, hasAction, true);
-                            continue;
-                        }
-
-                        // Add or combine
-                        GameObject standaloneObject = null;
+                        // Get GameObject
                         Transform parent = (hasAction) ? actionModelsParent : modelsParent;
-                        if (combiner == null || hasAction)
+                        GameObject standaloneObject = MeshReplacement.ImportCustomGameobject(modelId, parent, modelMatrix);
+                        if (standaloneObject == null)
                         {
-                            standaloneObject = AddStandaloneModel(dfUnity, ref modelData, modelMatrix, parent, hasAction);
-                            standaloneObject.GetComponent<DaggerfallMesh>().SetDungeonTextures(textureTable);
-                        }
-                        else
-                        {
-                            combiner.Add(ref modelData, modelMatrix);
+                            // Special handling for tapestries and banners
+                            // Some of these are so far out from wall player can become stuck behind them
+                            // Adding model invidually without collider to avoid problem
+                            // Not sure if these object ever actions, but bypass this hack if they do
+                            if (modelId >= minTapestryID && modelId <= maxTapestryID && !hasAction)
+                            {
+                                AddStandaloneModel(dfUnity, ref modelData, modelMatrix, modelsParent, hasAction, true);
+                                continue;
+                            }
+
+                            // Add or combine
+                            if (combiner == null || hasAction)
+                            {
+                                standaloneObject = AddStandaloneModel(dfUnity, ref modelData, modelMatrix, parent, hasAction);
+                                standaloneObject.GetComponent<DaggerfallMesh>().SetDungeonTextures(textureTable);
+                            }
+                            else
+                            {
+                                combiner.Add(ref modelData, modelMatrix);
+                            }
                         }
 
                         // Add action
@@ -575,7 +677,6 @@ namespace DaggerfallWorkshop.Utility
                     }
                 }
             }
-
         }
 
         /// <summary>
@@ -636,9 +737,10 @@ namespace DaggerfallWorkshop.Utility
             if (blockData.RdbBlock.ModelReferenceList[modelReference].ModelIdNum == redBrickDoorModelID)
                 return false;
 
-            // Otherwise Check if this is a door (DOR) or double-door (DDR)
+            // Otherwise Check if this is a door (DOR) or double-door (DDR) or has a NEW tag
+            //models 55007 550245 5018 have the NEW tag and always seem to be doors
             string description = blockData.RdbBlock.ModelReferenceList[modelReference].Description;
-            if (description == "DOR" || description == "DDR")
+            if (description == "DOR" || description == "DDR" || description == "NEW")
                 return true;
 
             return false;
@@ -753,22 +855,26 @@ namespace DaggerfallWorkshop.Utility
                     triggerFlag = (DFBlock.RdbTriggerFlags)obj.TriggerFlag_StartingLock;
 
                 // Add action node to actionLink dictionary
-                if (!actionLinkDict.ContainsKey(rdbObj.This))
+                if (!actionLinkDict.ContainsKey(rdbObj.Position))
                 {
                     ActionLink link;
                     link.nextKey = obj.ActionResource.NextObjectOffset;
                     link.prevKey = obj.ActionResource.PreviousObjectOffset;
                     link.gameObject = go;
-                    actionLinkDict.Add(rdbObj.This, link);
+                    actionLinkDict.Add(rdbObj.Position, link);
                 }
             }
 
             // Create unique LoadID for save sytem
             ulong loadID = 0;
             if (serialize)
-                loadID = (ulong)(blockData.Position + rdbObj.This);
+                loadID = (ulong)(blockData.Position + rdbObj.Position);
 
             AddAction(go, description, soundID_Index, duration, magnitude, axis, triggerFlag, actionFlag, loadID);
+
+            // Add special action door component if this is an "open"/"close" action but model is not a regular action door
+            if (actionFlag == DFBlock.RdbActionFlags.OpenDoor || actionFlag == DFBlock.RdbActionFlags.CloseDoor && !IsActionDoor(ref blockData, rdbObj, rdbObj.Resources.ModelResource.ModelIndex))
+                go.AddComponent<DaggerfallActionDoorSpecial>();
         }
 
         private static void AddActionFlatHelper(
@@ -793,23 +899,23 @@ namespace DaggerfallWorkshop.Utility
                 actionFlag = (DFBlock.RdbActionFlags)obj.Action;
 
             //set trigger flag if valid / known
-            if (Enum.IsDefined(typeof(DFBlock.RdbTriggerFlags), (DFBlock.RdbTriggerFlags)obj.TriggerFlag))
-                triggerFlag = (DFBlock.RdbTriggerFlags)obj.TriggerFlag;
+            if (Enum.IsDefined(typeof(DFBlock.RdbTriggerFlags), (DFBlock.RdbTriggerFlags)obj.Flags))
+                triggerFlag = (DFBlock.RdbTriggerFlags)obj.Flags;
 
             //add action node to actionLink dictionary
-            if (!actionLinkDict.ContainsKey(rdbObj.This))
+            if (!actionLinkDict.ContainsKey(rdbObj.Position))
             {
                 ActionLink link;
                 link.nextKey = obj.NextObjectOffset;
                 link.prevKey = -1;
                 link.gameObject = go;
-                actionLinkDict.Add(rdbObj.This, link);
+                actionLinkDict.Add(rdbObj.Position, link);
             }
 
             // Create unique LoadID for save sytem
             ulong loadID = 0;
             if (serialize)
-                loadID = (ulong)(blockData.Position + rdbObj.This);
+                loadID = (ulong)(blockData.Position + rdbObj.Position);
 
             AddAction(go, description, soundID_Index, duration, magnitude, axis, triggerFlag, actionFlag, loadID);
         }
@@ -846,9 +952,14 @@ namespace DaggerfallWorkshop.Utility
             if (description == "FLT")
             {
                 action.IsFlat = true;
-                //add box collider to flats with actions for raycasting - only flats that can be activated directly need this, so this can possibly be restricted in future
-                Collider col = go.AddComponent<BoxCollider>();
-                col.isTrigger = true;
+
+                // Add box collider to flats with actions for raycasting - only flats that can be activated directly need this, so this can possibly be restricted in future
+                // Skip this for flats that already have a collider assigned from elsewhere (e.g. NPC flats)
+                if (!go.GetComponent<Collider>())
+                {
+                    Collider col = go.AddComponent<BoxCollider>();
+                    col.isTrigger = true;
+                }
             }
             else
                 action.IsFlat = false;
@@ -1031,10 +1142,8 @@ namespace DaggerfallWorkshop.Utility
             DaggerfallActionDoor actionDoor = go.GetComponent<DaggerfallActionDoor>();
 
             // Set starting lock value
-            if (obj.Resources.ModelResource.TriggerFlag_StartingLock >= 16)
-            {
-                actionDoor.StartingLockValue = (int)obj.Resources.ModelResource.TriggerFlag_StartingLock;
-            }
+            byte[] lockValues = { 0x00, 0x02, 0x04, 0x06, 0x08, 0x0A, 0x0C, 0x0E, 0x10, 0x12, 0x14, 0x19, 0x1E, 0x32, 0x80, 0xFF };
+            actionDoor.StartingLockValue = lockValues[obj.Resources.ModelResource.TriggerFlag_StartingLock >> 4];
 
             // Set LoadID
             actionDoor.LoadID = loadID;
@@ -1067,21 +1176,78 @@ namespace DaggerfallWorkshop.Utility
             if (record == -1)
                 record = obj.Resources.FlatResource.TextureRecord;
 
-            // Spawn billboard gameobject
-            GameObject go = GameObjectHelper.CreateDaggerfallBillboardGameObject(archive, record, parent);
-            Vector3 billboardPosition = new Vector3(obj.XPos, -obj.YPos, obj.ZPos) * MeshReader.GlobalScale;
+            // Add GameObject to scene
+            Vector3 targetPosition = new Vector3(obj.XPos, -obj.YPos, obj.ZPos) * MeshReader.GlobalScale;
+            GameObject go = MeshReplacement.ImportCustomFlatGameobject(archive, record, targetPosition, parent, true);
+            if (!go)
+            {
+                // Setup standard billboard and assign RDB data
+                go = GameObjectHelper.CreateDaggerfallBillboardGameObject(archive, record, parent);
+                go.transform.position = targetPosition;
+                DaggerfallBillboard dfBillboard = go.GetComponent<DaggerfallBillboard>();
+                dfBillboard.SetRDBResourceData(obj.Resources.FlatResource);
+            }
 
-            // Add RDB data to billboard
-            DaggerfallBillboard dfBillboard = go.GetComponent<DaggerfallBillboard>();
-            dfBillboard.SetResourceData(obj.Resources.FlatResource);
+            // Add StaticNPC behaviour - required for quest system
+            if (IsNPCFlat(archive))
+            {
+                StaticNPC npc = go.AddComponent<StaticNPC>();
+                npc.SetLayoutData(obj);
+            }
 
-            // Set transform
-            go.transform.position = billboardPosition;
+            // Special handling for individual NPCs found in layout data
+            // This NPC may be used in 0 or more active quests at home
+            int factionID = obj.Resources.FlatResource.FactionOrMobileId;
+            if (QuestMachine.Instance.IsIndividualNPC(factionID))
+            {
+                // Check if NPC has been placed elsewhere on a quest
+                if (QuestMachine.Instance.IsIndividualQuestNPCAtSiteLink(factionID))
+                {
+                    // Disable individual NPC if placed elsewhere
+                    go.SetActive(false);
+                }
+                else
+                {
+                    // Always add QuestResourceBehaviour to individual NPC
+                    // This is required to bootstrap quest as often questor is not set until after player clicks resource
+                    QuestResourceBehaviour questResourceBehaviour = go.AddComponent<QuestResourceBehaviour>();
+                    Person[] activePersonResources = QuestMachine.Instance.ActiveFactionPersons(factionID);
+                    if (activePersonResources != null && activePersonResources.Length > 0)
+                    {
+                        Person person = activePersonResources[0];
+                        questResourceBehaviour.AssignResource(person);
+                        person.QuestResourceBehaviour = questResourceBehaviour;
+                    }
+                }
+            }
 
-            // Disable enemy flats
+            // Disable enemy editor flats
             if (archive == TextureReader.EditorFlatsTextureArchive && (record == 15 || record == 16))
                 go.SetActive(false);
 
+            // Add torch burning sound
+            if(IsTorchFlat(archive, record))
+                AddTorchAudioSource(go);
+
+            return go;
+        }
+
+        public static bool IsNPCFlat(int archive)
+        {
+            // These texture archives are NPCs
+            if (archive == 334 ||                               // Daggerfall people
+                archive == 346 ||                               // Wayrest people
+                archive == 357 ||                               // Sentinel people
+                archive >= 175 && archive <= 184)               // Other people
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        public static bool IsTorchFlat(int archive, int record)
+        {
             // Add torch burning sound
             if (archive == TextureReader.LightsTextureArchive)
             {
@@ -1095,12 +1261,11 @@ namespace DaggerfallWorkshop.Utility
                     case 18:
                     case 19:
                     case 20:
-                        AddTorchAudioSource(go);
-                        break;
+                        return true;
                 }
             }
 
-            return go;
+            return false;
         }
 
         private static void AddTorchAudioSource(GameObject go)
@@ -1122,6 +1287,7 @@ namespace DaggerfallWorkshop.Utility
             int monsterVariance,
             Transform parent,
             ref DFBlock blockData,
+            GameObject[] startMarkers,
             bool serialize)
         {
             // Must have a dungeon type
@@ -1129,14 +1295,35 @@ namespace DaggerfallWorkshop.Utility
                 return;
 
             // Get dungeon type index
-            int dungeonIndex = (int)dungeonType >> 8;
+            int dungeonIndex = (int)dungeonType;
             if (dungeonIndex < RandomEncounters.EncounterTables.Length)
             {
+                // Get water level from start marker if it exists
+                DaggerfallBillboard dfBillboard;
+                if (startMarkers.Length > 0)
+                    dfBillboard = startMarkers[0].GetComponent<DaggerfallBillboard>();
+                else
+                    dfBillboard = null;
+
+                int waterLevel = 10000;
+                if (dfBillboard != null)
+                    waterLevel = dfBillboard.Summary.WaterLevel;
+
                 // Get encounter table
-                RandomEncounterTable table = RandomEncounters.EncounterTables[dungeonIndex];
+                // Use water encounter table if the marker is under the water level
+                // These are classic values, so a greater y value means elevation is lower
+                RandomEncounterTable table;
+                if (waterLevel >= obj.YPos)
+                {
+                    table = RandomEncounters.EncounterTables[dungeonIndex];
+                }
+                else
+                {
+                    table = RandomEncounters.EncounterTables[19]; // underwater encounter table
+                }
 
                 // Get base monster index into table
-                int baseMonsterIndex = (int)((float)table.Enemies.Length * monsterPower);
+                int baseMonsterIndex = (int)(table.Enemies.Length * monsterPower);
 
                 // Set min index
                 int minMonsterIndex = baseMonsterIndex - monsterVariance;
@@ -1146,18 +1333,20 @@ namespace DaggerfallWorkshop.Utility
                 // Set max index
                 int maxMonsterIndex = baseMonsterIndex + monsterVariance;
                 if (maxMonsterIndex >= table.Enemies.Length)
-                    maxMonsterIndex = table.Enemies.Length;
+                    maxMonsterIndex = table.Enemies.Length - 1;
 
                 // Get random monster from table
-                MobileTypes type = table.Enemies[UnityEngine.Random.Range(minMonsterIndex, maxMonsterIndex)];
+                MobileTypes type = table.Enemies[UnityEngine.Random.Range(minMonsterIndex, maxMonsterIndex + 1)];
 
                 // Create unique LoadID for save sytem
                 ulong loadID = 0;
                 if (serialize)
-                    loadID = (ulong)(blockData.Position + obj.This);
+                    loadID = (ulong)(blockData.Position + obj.Position);
+
+                byte classicSpawnDistanceType = obj.Resources.FlatResource.SoundIndex;
 
                 // Add enemy
-                AddEnemy(obj, type, parent, loadID);
+                AddEnemy(obj, type, parent, loadID, classicSpawnDistanceType, false, waterLevel);
             }
             else
             {
@@ -1165,34 +1354,163 @@ namespace DaggerfallWorkshop.Utility
             }
         }
 
-        private static void AddFixedRDBEnemy(DFBlock.RdbObject obj, Transform parent, ref DFBlock blockData, bool serialize)
+        private static void AddRandomRDBEnemyClassic(
+            DFBlock.RdbObject obj,
+            DFRegion.DungeonTypes dungeonType,
+            float monsterPower,
+            int monsterVariance,
+            Transform parent,
+            ref DFBlock blockData,
+            GameObject[] startMarkers,
+            bool serialize,
+            MobileTypes[] DungeonWaterEnemiesToPlace,
+            MobileTypes[] DungeonNonWaterEnemiesToPlace)
+        {
+            // Get dungeon type index
+            int dungeonIndex = (int)dungeonType;
+            if (dungeonIndex < RandomEncounters.EncounterTables.Length)
+            {
+                // Get water level from start marker if it exists
+                DaggerfallBillboard dfBillboard;
+                if (startMarkers.Length > 0)
+                    dfBillboard = startMarkers[0].GetComponent<DaggerfallBillboard>();
+                else
+                    dfBillboard = null;
+
+                int waterLevel = 10000;
+                if (dfBillboard != null)
+                    waterLevel = dfBillboard.Summary.WaterLevel;
+
+                // Get encounter table
+                // Use water encounter table if the marker is under the water level
+                // These are classic values, so a greater y value means elevation is lower
+                bool usingWaterEnemies = false;
+                if (waterLevel < obj.YPos)
+                    usingWaterEnemies = true;
+
+                // Create unique LoadID for save sytem
+                ulong loadID = 0;
+                if (serialize)
+                    loadID = (ulong)(blockData.Position + obj.Position);
+
+                int slot = obj.Resources.FlatResource.Flags;
+                if (slot == 0)
+                    slot = UnityEngine.Random.Range(1, 7);
+
+                MobileTypes type;
+                if (usingWaterEnemies)
+                    type = DungeonWaterEnemiesToPlace[slot];
+                else
+                    type = DungeonNonWaterEnemiesToPlace[slot];
+
+                byte classicSpawnDistanceType = obj.Resources.FlatResource.SoundIndex;
+
+                // Add enemy
+                AddEnemy(obj, type, parent, loadID, classicSpawnDistanceType, false, waterLevel);
+            }
+            else
+            {
+                DaggerfallUnity.LogMessage(string.Format("RDBLayout: Dungeon type {0} is out of range or unknown.", dungeonType), true);
+            }
+        }
+
+        // Recreation of how classic chooses an enemy type from the random encounter tables
+        private static MobileTypes ChooseRandomEnemyType(RandomEncounterTable table)
+        {
+            int playerLevel = GameManager.Instance.PlayerEntity.Level;
+            int minTableIndex = 0;
+            int maxTableIndex = table.Enemies.Length;
+
+            int random = DFRandom.random_range_inclusive(1, 100);
+            if (random > 95 && playerLevel <= 5)
+            {
+                maxTableIndex = playerLevel + 2;
+            }
+            else if (random > 80)
+            {
+                maxTableIndex = playerLevel + 1;
+            }
+            else
+            {
+                minTableIndex = playerLevel - 3;
+                maxTableIndex = playerLevel + 3;
+            }
+            if (minTableIndex < 0)
+            {
+                minTableIndex = 0;
+                maxTableIndex = 5;
+            }
+            else if (maxTableIndex > 19)
+            {
+                minTableIndex = 14;
+                maxTableIndex = 19;
+            }
+
+            return table.Enemies[DFRandom.random_range_inclusive(minTableIndex, maxTableIndex)];
+        }
+
+        private static void AddFixedRDBEnemy(DFBlock.RdbObject obj, Transform parent, ref DFBlock blockData, GameObject[] startMarkers, bool serialize)
         {
             // Get type value and ignore known invalid types
-            int typeValue = (int)(obj.Resources.FlatResource.FactionMobileId & 0xff);
+            int typeValue = (int)(obj.Resources.FlatResource.FactionOrMobileId & 0xff);
             if (typeValue == 99)
                 return;
 
             // Create unique LoadID for save sytem
             ulong loadID = 0;
             if (serialize)
-                loadID = (ulong)(blockData.Position + obj.This);
+                loadID = (ulong)(blockData.Position + obj.Position);
 
             // Cast to enum
-            MobileTypes type = (MobileTypes)(obj.Resources.FlatResource.FactionMobileId & 0xff);
+            MobileTypes type = (MobileTypes)(obj.Resources.FlatResource.FactionOrMobileId & 0xff);
 
-            AddEnemy(obj, type, parent, loadID);
+            byte classicSpawnDistanceType = obj.Resources.FlatResource.SoundIndex;
+
+            // Get water level from start marker if it exists
+            DaggerfallBillboard dfBillboard;
+            if (startMarkers.Length > 0)
+                dfBillboard = startMarkers[0].GetComponent<DaggerfallBillboard>();
+            else
+                dfBillboard = null;
+
+            int waterLevel = 10000;
+            if (dfBillboard != null)
+                waterLevel = dfBillboard.Summary.WaterLevel;
+
+            AddEnemy(obj, type, parent, loadID, classicSpawnDistanceType, true, waterLevel);
         }
 
         private static void AddEnemy(
             DFBlock.RdbObject obj,
             MobileTypes type,
             Transform parent = null,
-            ulong loadID = 0)
+            ulong loadID = 0,
+            byte classicSpawnDistanceType = 0,
+            bool useGenderFlag = true,
+            int waterLevel = 10000)
         {
+            // Water level check. This is done by classic and is needed in at least one case, where otherwise
+            // a slaughterfish will be placed outside of water.
+            // These are classic values, so a greater y value means elevation is lower
+            if ((type == MobileTypes.Slaughterfish || type == MobileTypes.Dreugh || type == MobileTypes.Lamia)
+                && (waterLevel == 10000 || waterLevel - 20 > obj.YPos))
+            {
+                return;
+            }
+
             // Get default reaction
             MobileReactions reaction = MobileReactions.Hostile;
             if (obj.Resources.FlatResource.Action == (int)DFBlock.EnemyReactionTypes.Passive)
                 reaction = MobileReactions.Passive;
+
+            MobileGender gender = MobileGender.Unspecified;
+            if ((int)type > 43 && useGenderFlag)
+            {
+                if (obj.Resources.FlatResource.Flags == (int)DFBlock.EnemyGenders.Female)
+                    gender = MobileGender.Female;
+                if (obj.Resources.FlatResource.Flags == (int)DFBlock.EnemyGenders.Male)
+                    gender = MobileGender.Male;
+            }
 
             // Just setup demo enemies at this time
             string name = string.Format("DaggerfallEnemy [{0}]", type.ToString());
@@ -1202,7 +1520,7 @@ namespace DaggerfallWorkshop.Utility
             if (setupEnemy != null)
             {
                 // Configure enemy
-                setupEnemy.ApplyEnemySettings(type, reaction);
+                setupEnemy.ApplyEnemySettings(type, reaction, gender, classicSpawnDistanceType);
 
                 // Align non-flying units with ground
                 DaggerfallMobileUnit mobileUnit = setupEnemy.GetMobileBillboardChild();
@@ -1217,35 +1535,67 @@ namespace DaggerfallWorkshop.Utility
             }
         }
 
-        private static void AddRandomTreasure(DFBlock.RdbObject obj, Transform parent, ref DFBlock blockData, bool serialize)
+        private static DaggerfallLoot AddRandomTreasure(
+            DFBlock.RdbObject obj,
+            Transform parent,
+            ref DFBlock blockData,
+            DFRegion.DungeonTypes dungeonType,
+            bool serialize,
+            int archive = 0,
+            int record = 0,
+            bool adjustPosition = true)
         {
             // Create unique LoadID for save sytem
             ulong loadID = 0;
             if (serialize)
-                loadID = (ulong)(blockData.Position + obj.This);
+                loadID = (ulong)(blockData.Position + obj.Position);
 
             // Randomise container texture
-            int iconIndex = UnityEngine.Random.Range(0, DaggerfallLoot.randomTreasureIconIndices.Length);
-            int iconRecord = DaggerfallLoot.randomTreasureIconIndices[iconIndex];
+            int iconIndex = UnityEngine.Random.Range(0, DaggerfallLootDataTables.randomTreasureIconIndices.Length);
+            int iconRecord = DaggerfallLootDataTables.randomTreasureIconIndices[iconIndex];
 
             // Find bottom of marker in world space
             // Marker is aligned to surface and has a constant size (40x40)
             Vector3 position = new Vector3(obj.XPos, -obj.YPos, obj.ZPos) * MeshReader.GlobalScale;
-            position.y += (-DaggerfallLoot.randomTreasureMarkerDim / 2 * MeshReader.GlobalScale);
+            if (adjustPosition)
+                position.y += (-DaggerfallLoot.randomTreasureMarkerDim / 2 * MeshReader.GlobalScale);
 
             // Create random loot container
-            DaggerfallLoot loot = GameObjectHelper.CreateLootContainer(
-                LootContainerTypes.RandomTreasure,
-                InventoryContainerImages.Chest,
-                position,
-                parent,
-                DaggerfallLoot.randomTreasureArchive,
-                iconRecord,
-                loadID);
+            DaggerfallLoot loot = null;
+            if (archive == 0)
+            {
+                loot = GameObjectHelper.CreateLootContainer(
+                    LootContainerTypes.RandomTreasure,
+                    InventoryContainerImages.Chest,
+                    position,
+                    parent,
+                    DaggerfallLootDataTables.randomTreasureArchive,
+                    iconRecord,
+                    loadID,
+                    null,
+                    adjustPosition);
+            }
+            else
+            {
+                loot = GameObjectHelper.CreateLootContainer(
+                    LootContainerTypes.RandomTreasure,
+                    InventoryContainerImages.Chest,
+                    position,
+                    parent,
+                    archive,
+                    record,
+                    loadID,
+                    null,
+                    adjustPosition);
+            }
 
-            // Set random treasure key
-            loot.LootTableKey = "O";
-            loot.GenerateItems();
+            // Get dungeon type index
+            int dungeonIndex = (int)dungeonType;
+
+            if (!LootTables.GenerateLoot(loot, dungeonIndex))
+                DaggerfallUnity.LogMessage(string.Format("RDBLayout: Dungeon type {0} is out of range or unknown.", dungeonType), true);
+
+            return loot;
         }
 
         #endregion

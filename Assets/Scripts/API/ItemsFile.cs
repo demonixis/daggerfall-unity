@@ -1,18 +1,17 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
 // Original Author: Gavin Clayton (interkarma@dfworkshop.net)
-// Contributors:    
-// 
+// Contributors:
+//
 // Notes:
 //
 
 using System;
 using System.IO;
 using System.Text;
-using System.Collections;
 using System.Collections.Generic;
 using DaggerfallConnect.Utility;
 
@@ -27,11 +26,11 @@ namespace DaggerfallConnect.FallExe
         public long position;                       // Position record was read from FALL.EXE
         public Byte[] name;                         // Display name
         public Int32 baseWeightUnits;               // Base weight in 0.25kg units
-        public Int16 hitPoints;                     // Hit points
+        public UInt16 hitPoints;                    // Hit points
         public Int32 capacityOrTarget;              // Capacity of container or target of effect
         public Int32 basePrice;                     // Base price before material, mercantile, etc. modify value
         public Int16 enchantmentPoints;             // Base enchantment points before material
-        public Byte unknown;                        // Unknown value
+        public Byte rarity;                         // Rarity of item appearing in buildings. Building quality must be at least equal this for item to appear.
         public Byte variants;                       // Number of variants for wearable items, unknown for non-wearable items
         public Byte drawOrderOrEffect;              // Ordering of items on paper doll (sort lowest to highest) or effect for ingredients
         public Byte propertiesBitfield;             // Bitfield with some other item properties
@@ -42,7 +41,6 @@ namespace DaggerfallConnect.FallExe
     /// <summary>
     /// Stores item template data in a more friendly format.
     /// Provides some convenience such as splitting out texture bitfields.
-    /// Passing through unknown values as-is.
     /// </summary>
     [Serializable]
     public struct ItemTemplate
@@ -54,7 +52,7 @@ namespace DaggerfallConnect.FallExe
         public int capacityOrTarget;                // Capacity of container or target of effect
         public int basePrice;                       // Base price before material, mercantile, etc. modify value
         public int enchantmentPoints;               // Base enchantment points before material
-        public byte unknown;                        // Unknown value
+        public byte rarity;                         // Rarity of item appearing in buildings. Building quality must be at least equal this for item to appear.
         public byte variants;                       // Number of variants for wearable items, unknown for non-wearable items
         public byte drawOrderOrEffect;              // Ordering of items on paper doll (sort lowest to highest) or effect for ingredients
         public bool isBluntWeapon;                  // True for blunt weapons
@@ -65,6 +63,100 @@ namespace DaggerfallConnect.FallExe
         public int worldTextureRecord;              // World texture record index
         public int playerTextureArchive;            // Player inventory texture archive index
         public int playerTextureRecord;             // Player inventory texture record index
+    }
+
+    /// <summary>
+    /// Stores template data for magic items and artifacts.
+    /// </summary>
+    [Serializable]
+    public struct MagicItemTemplate
+    {
+        public long index;                          // Index of this item in lit
+        public string name;                         // Display name
+        public MagicItemTypes type;                 // Type of magic item
+        public byte group;                          // Group in item templates
+        public byte groupIndex;                     // Group index (subgroup) in item templates
+        public DaggerfallEnchantment[] enchantments;// Array of legacy enchantments on this item
+        public short uses;                          // Number of uses/Item condition
+        public int value;                           // Only used for artifacts
+        public byte material;                       // Material
+    }
+
+    /// <summary>
+    /// Daggerfall enchantment data.
+    /// </summary>
+    public struct DaggerfallEnchantment
+    {
+        public EnchantmentTypes type;
+        public short param;                           // A SPELLS.STD spell ID, an identifier for a unique artifact effect, enemy group affected by bonus to hit, social group affected by reputation modifier
+    }
+
+    /// <summary>
+    /// Magic item types.
+    /// </summary>
+    public enum MagicItemTypes
+    {
+        RegularMagicItem,
+        ArtifactClass1,
+        ArtifactClass2,
+    }
+
+    /// <summary>
+    /// Enchantment types
+    /// </summary>
+    public enum EnchantmentTypes
+    {
+        None = -1,
+        CastWhenUsed = 0,
+        CastWhenHeld = 1,
+        CastWhenStrikes = 2,
+        ExtraSpellPts = 3,
+        PotentVs = 4,
+        RegensHealth = 5,
+        VampiricEffect = 6,
+        IncreasedWeightAllowance = 7,
+        RepairsObjects = 8,
+        AbsorbsSpells = 9,
+        EnhancesSkill = 10,
+        FeatherWeight = 11,
+        StrengthensArmor = 12,
+        ImprovesTalents = 13,
+        GoodRepWith = 14,
+        SoulBound = 15,
+        ItemDeteriorates = 16,
+        UserTakesDamage = 17,
+        VisionProblems = 18,
+        WalkingProblems = 19,
+        LowDamageVs = 20,
+        HealthLeech = 21,
+        BadReactionsFrom = 22,
+        ExtraWeight = 23,
+        WeakensArmor = 24,
+        BadRepWith = 25,
+        SpecialArtifactEffect = 26,
+    }
+
+    public struct BookMappingTemplate
+    {
+        public int id;
+        public string title;
+    }
+
+    public struct RecipeMapping
+    {
+        public string name;
+        public Recipe[] recipes;
+    }
+
+    public struct Recipe
+    {
+        public Ingredient[] ingredients;
+    }
+
+    public struct Ingredient
+    {
+        public string name;
+        public int id;
     }
 
     /// <summary>
@@ -80,13 +172,13 @@ namespace DaggerfallConnect.FallExe
         const string fallExeFilename = "FALL.EXE";
         const int defaultItemsOffset = 1776954;
         const int nameLength = 24;
-        const int recordLength = 48;
+        //const int recordLength = 48;
         const int totalItems = 288;
 
         bool isOpen = false;
         int itemsOffset = defaultItemsOffset;
-        FileProxy fallExeFile = new FileProxy();
-        List<DFItem> items = new List<DFItem>();
+        readonly FileProxy fallExeFile = new FileProxy();
+        readonly List<DFItem> items = new List<DFItem>();
         Exception lastException = new Exception();
 
         #endregion
@@ -238,19 +330,19 @@ namespace DaggerfallConnect.FallExe
                 desc.capacityOrTarget = item.capacityOrTarget;
                 desc.basePrice = item.basePrice;
                 desc.enchantmentPoints = item.enchantmentPoints;
-                desc.unknown = item.unknown;
+                desc.rarity = item.rarity;
                 desc.variants = item.variants;
                 desc.drawOrderOrEffect = item.drawOrderOrEffect;
-                desc.isBluntWeapon = (((item.propertiesBitfield >> 4) & 1) == 1) ? true : false;
-                desc.isLiquid = (((item.propertiesBitfield >> 3) & 1) == 1) ? true : false;
-                desc.isOneHanded = (((item.propertiesBitfield >> 2) & 1) == 1) ? true : false;
-                desc.isIngredient = ((item.propertiesBitfield & 1) == 1) ? true : false;
+                desc.isBluntWeapon = (((item.propertiesBitfield >> 4) & 1) == 1);
+                desc.isLiquid = (((item.propertiesBitfield >> 3) & 1) == 1);
+                desc.isOneHanded = (((item.propertiesBitfield >> 2) & 1) == 1);
+                desc.isIngredient = ((item.propertiesBitfield & 1) == 1);
                 desc.worldTextureArchive = item.worldTextureBitfield >> 7;
                 desc.worldTextureRecord = item.worldTextureBitfield & 0x7f;
                 desc.playerTextureArchive = item.playerTextureBitfield >> 7;
                 desc.playerTextureRecord = item.playerTextureBitfield & 0x7f;
             }
-            
+
             return desc;
         }
 
@@ -265,7 +357,7 @@ namespace DaggerfallConnect.FallExe
         /// <param name="item">Item to rewrite.</param>
         public void RewriteItem(DFItem item)
         {
-            if (isOpen && fallExeFile.Usage == FileUsage.UseDisk && fallExeFile.ReadOnly == false)
+            if (isOpen && fallExeFile.Usage == FileUsage.UseDisk && !fallExeFile.ReadOnly)
             {
                 BinaryWriter writer = fallExeFile.GetWriter();
                 writer.BaseStream.Position = item.position;
@@ -275,7 +367,7 @@ namespace DaggerfallConnect.FallExe
                 writer.Write(item.capacityOrTarget);
                 writer.Write(item.basePrice);
                 writer.Write(item.enchantmentPoints);
-                writer.Write(item.unknown);
+                writer.Write(item.rarity);
                 writer.Write(item.variants);
                 writer.Write(item.drawOrderOrEffect);
                 writer.Write(item.propertiesBitfield);
@@ -342,11 +434,11 @@ namespace DaggerfallConnect.FallExe
             item.position = reader.BaseStream.Position;
             item.name = reader.ReadBytes(nameLength);
             item.baseWeightUnits = reader.ReadInt32();
-            item.hitPoints = reader.ReadInt16();
+            item.hitPoints = reader.ReadUInt16();
             item.capacityOrTarget = reader.ReadInt32();
             item.basePrice = reader.ReadInt32();
             item.enchantmentPoints = reader.ReadInt16();
-            item.unknown = reader.ReadByte();
+            item.rarity = reader.ReadByte();
             item.variants = reader.ReadByte();
             item.drawOrderOrEffect = reader.ReadByte();
             item.propertiesBitfield = reader.ReadByte();

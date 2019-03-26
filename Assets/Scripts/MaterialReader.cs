@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -21,9 +21,62 @@ using DaggerfallConnect;
 using DaggerfallConnect.Utility;
 using DaggerfallConnect.Arena2;
 using DaggerfallWorkshop.Utility;
+using DaggerfallWorkshop.Utility.AssetInjection;
 
 namespace DaggerfallWorkshop
 {
+    #region Uniforms
+
+    internal static class KeyWords
+    {       
+        internal const string CutOut                                = "_ALPHATEST_ON";
+        internal const string Fade                                  = "_ALPHABLEND_ON";
+        internal const string Transparent                           = "_ALPHAPREMULTIPLY_ON";
+        internal const string NormalMap                             = "_NORMALMAP";
+        internal const string HeightMap                             = "_PARALLAXMAP";
+        internal const string Emission                              = "_EMISSION";
+        internal const string MetallicGlossMap                      = "_METALLICGLOSSMAP";
+    }
+
+    internal static class Uniforms
+    {
+        internal static readonly int MainTex                        = Shader.PropertyToID("_MainTex");
+        internal static readonly int Glossiness                     = Shader.PropertyToID("_Glossiness");
+        internal static readonly int SmoothnessTextureChannel       = Shader.PropertyToID("_SmoothnessTextureChannel");           
+        internal static readonly int Metallic                       = Shader.PropertyToID("_Metallic");    
+        internal static readonly int MetallicGlossMap               = Shader.PropertyToID("_MetallicGlossMap");
+        internal static readonly int BumpMap                        = Shader.PropertyToID("_BumpMap");
+        internal static readonly int HeightMap                      = Shader.PropertyToID("_ParallaxMap");
+        internal static readonly int EmissionColor                  = Shader.PropertyToID("_EmissionColor");
+        internal static readonly int EmissionMap                    = Shader.PropertyToID("_EmissionMap");
+        internal static readonly int Mode                           = Shader.PropertyToID("_Mode");
+        internal static readonly int SrcBlend                       = Shader.PropertyToID("_SrcBlend");
+        internal static readonly int DstBlend                       = Shader.PropertyToID("_DstBlend");
+        internal static readonly int ZWrite                         = Shader.PropertyToID("_ZWrite");
+
+        internal static readonly int[] Textures = new int[]
+        {
+            MainTex, EmissionMap, BumpMap, HeightMap, MetallicGlossMap
+        };
+    }
+
+    internal static class TileUniforms
+    {
+        internal static readonly int TileAtlasTex                   = Shader.PropertyToID("_TileAtlasTex");
+        internal static readonly int TilemapTex                     = Shader.PropertyToID("_TilemapTex");
+        internal static readonly int TilemapDim                     = Shader.PropertyToID("_TilemapDim");
+    }
+
+    internal static class TileTexArrUniforms
+    {
+        internal static readonly int TileTexArr                     = Shader.PropertyToID("_TileTexArr");
+        internal static readonly int TileNormalMapTexArr            = Shader.PropertyToID("_TileNormalMapTexArr");
+        internal static readonly int TileMetallicGlossMapTexArr     = Shader.PropertyToID("_TileMetallicGlossMapTexArr");
+        internal static readonly int TilemapTex                     = Shader.PropertyToID("_TilemapTex");
+    }
+
+    #endregion
+
     /// <summary>
     /// Imports Daggerfall images into Unity.
     /// Should only be attached to DaggerfallUnity singleton (for which it is a required component).
@@ -37,6 +90,7 @@ namespace DaggerfallWorkshop
         // General settings
         public bool AtlasTextures = true;
         public bool CompressSkyTextures = false;
+        public bool CompressModdedTextures = true;
         public bool Sharpen = false;
         public bool GenerateNormals = false;
         public float NormalTextureStrength = 0.2f;
@@ -44,8 +98,7 @@ namespace DaggerfallWorkshop
         public FilterMode SkyFilterMode = FilterMode.Point;
         public bool MipMaps = true;
         public bool ReadableTextures = false;
-        public SupportedAlphaTextureFormats AlphaTextureFormat = SupportedAlphaTextureFormats.RGBA32;
-        public SupportedNonAlphaTextureFormats NonAlphaTextureFormat = SupportedNonAlphaTextureFormats.RGB24;
+        public SupportedAlphaTextureFormats AlphaTextureFormat = SupportedAlphaTextureFormats.ARGB32;
 
         // Window settings
         public Color DayWindowColor = new Color32(89, 154, 178, 0xff);
@@ -63,7 +116,7 @@ namespace DaggerfallWorkshop
         public const int MainKeyGroup = 0;
         public const int AtlasKeyGroup = 512;
         public const int TileMapKeyGroup = 1024;
-        //public const int UnusedKeyGroup1 = 1536;
+        public const int CustomBillboardKeyGroup = 1536;
         //public const int UnusedKeyGroup2 = 2048;
         //public const int UnusedKeyGroup3 = 2560;
         //public const int UnusedKeyGroup4 = 3584;
@@ -72,13 +125,16 @@ namespace DaggerfallWorkshop
         // Shader names
         public const string _StandardShaderName = "Standard";
         public const string _DaggerfallTilemapShaderName = "Daggerfall/Tilemap";
+        public const string _DaggerfallTilemapTextureArrayShaderName = "Daggerfall/TilemapTextureArray";
         public const string _DaggerfallBillboardShaderName = "Daggerfall/Billboard";
         public const string _DaggerfallBillboardBatchShaderName = "Daggerfall/BillboardBatch";
+        public const string _DaggerfallPixelFontShaderName = "Daggerfall/PixelFont";
+        public const string _DaggerfallSDFFontShaderName = "Daggerfall/SDFFont";
 
         DaggerfallUnity dfUnity;
         TextureReader textureReader;
         Dictionary<int, CachedMaterial> materialDict = new Dictionary<int, CachedMaterial>();
-        TextureAtlasBuilder miscBillboardsAtlas = null;
+        //TextureAtlasBuilder miscBillboardsAtlas = null;
 
         #endregion
 
@@ -126,35 +182,35 @@ namespace DaggerfallWorkshop
             get { return (IsReady) ? textureReader : null; }
         }
 
-        /// <summary>
-        /// TEMP: Gets a special misc billboards super-atlas for scene builders.
-        /// </summary>
-        public TextureAtlasBuilder MiscBillboardAtlas
-        {
-            get
-            {
-                // Create new atlas or return existing
-                if (miscBillboardsAtlas == null)
-                {
-                    if (!IsReady)
-                        return null;
+        ///// <summary>
+        ///// TEMP: Gets a special misc billboards super-atlas for scene builders.
+        ///// </summary>
+        //public TextureAtlasBuilder MiscBillboardAtlas
+        //{
+        //    get
+        //    {
+        //        // Create new atlas or return existing
+        //        if (miscBillboardsAtlas == null)
+        //        {
+        //            if (!IsReady)
+        //                return null;
 
-                    miscBillboardsAtlas = textureReader.CreateTextureAtlasBuilder(
-                        textureReader.MiscFlatsTextureArchives,
-                        2,
-                        true,
-                        2048,
-                        AlphaTextureFormat,
-                        NonAlphaTextureFormat);
+        //            miscBillboardsAtlas = textureReader.CreateTextureAtlasBuilder(
+        //                textureReader.MiscFlatsTextureArchives,
+        //                2,
+        //                true,
+        //                DaggerfallUnity.Settings.MeshAndTextureReplacement ? 4096 : 2048,
+        //                AlphaTextureFormat,
+        //                NonAlphaTextureFormat);
 
-                    return miscBillboardsAtlas;
-                }
-                else
-                {
-                    return miscBillboardsAtlas;
-                }
-            }
-        }
+        //            return miscBillboardsAtlas;
+        //        }
+        //        else
+        //        {
+        //            return miscBillboardsAtlas;
+        //        }
+        //    }
+        //}
 
         #endregion
 
@@ -168,7 +224,7 @@ namespace DaggerfallWorkshop
             CustomBlendMode blendMode = CustomBlendMode.Opaque,
             CustomSmoothnessMapChannel smoothnessChannel = CustomSmoothnessMapChannel.AlbedoAlpha,
             float metallic = 0,
-            float glossiness = 1)
+            float glossiness = 0)
         {
             // Create material
             Shader shader = Shader.Find(_StandardShaderName);
@@ -191,51 +247,51 @@ namespace DaggerfallWorkshop
             float glossiness)
         {
             // Set properties
-            material.SetFloat("_Mode", (int)blendMode);
-            material.SetFloat("_SmoothnessTextureChannel", (int)smoothnessChannel);
-            material.SetFloat("_Metallic", metallic);
-            material.SetFloat("_Glossiness", glossiness);
+            material.SetFloat(Uniforms.Mode, (int)blendMode);
+            material.SetFloat(Uniforms.SmoothnessTextureChannel, (int)smoothnessChannel);
+            material.SetFloat(Uniforms.Metallic, metallic);
+            material.SetFloat(Uniforms.Glossiness, glossiness);
 
             switch (blendMode)
             {
                 case CustomBlendMode.Opaque:
                     material.SetOverrideTag("RenderType", "");
-                    material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.One);
-                    material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.Zero);
-                    material.SetInt("_ZWrite", 1);
-                    material.DisableKeyword("_ALPHATEST_ON");
-                    material.DisableKeyword("_ALPHABLEND_ON");
-                    material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+                    material.SetInt(Uniforms.SrcBlend, (int)UnityEngine.Rendering.BlendMode.One);
+                    material.SetInt(Uniforms.DstBlend, (int)UnityEngine.Rendering.BlendMode.Zero);
+                    material.SetInt(Uniforms.ZWrite, 1);
+                    material.DisableKeyword(KeyWords.CutOut);
+                    material.DisableKeyword(KeyWords.Fade);
+                    material.DisableKeyword(KeyWords.Transparent);
                     material.renderQueue = -1;
                     break;
                 case CustomBlendMode.Cutout:
                     material.SetOverrideTag("RenderType", "TransparentCutout");
-                    material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.One);
-                    material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.Zero);
-                    material.SetInt("_ZWrite", 1);
-                    material.EnableKeyword("_ALPHATEST_ON");
-                    material.DisableKeyword("_ALPHABLEND_ON");
-                    material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+                    material.SetInt(Uniforms.SrcBlend, (int)UnityEngine.Rendering.BlendMode.One);
+                    material.SetInt(Uniforms.DstBlend, (int)UnityEngine.Rendering.BlendMode.Zero);
+                    material.SetInt(Uniforms.ZWrite, 1);
+                    material.EnableKeyword(KeyWords.CutOut);
+                    material.DisableKeyword(KeyWords.Fade);
+                    material.DisableKeyword(KeyWords.Transparent);
                     material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.AlphaTest;
                     break;
                 case CustomBlendMode.Fade:
                     material.SetOverrideTag("RenderType", "Transparent");
-                    material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-                    material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-                    material.SetInt("_ZWrite", 0);
-                    material.DisableKeyword("_ALPHATEST_ON");
-                    material.EnableKeyword("_ALPHABLEND_ON");
-                    material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+                    material.SetInt(Uniforms.SrcBlend, (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                    material.SetInt(Uniforms.DstBlend, (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                    material.SetInt(Uniforms.ZWrite, 0);
+                    material.DisableKeyword(KeyWords.CutOut);
+                    material.EnableKeyword(KeyWords.Fade);
+                    material.DisableKeyword(KeyWords.Transparent);
                     material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
                     break;
                 case CustomBlendMode.Transparent:
                     material.SetOverrideTag("RenderType", "Transparent");
-                    material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.One);
-                    material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-                    material.SetInt("_ZWrite", 0);
-                    material.DisableKeyword("_ALPHATEST_ON");
-                    material.DisableKeyword("_ALPHABLEND_ON");
-                    material.EnableKeyword("_ALPHAPREMULTIPLY_ON");
+                    material.SetInt(Uniforms.SrcBlend, (int)UnityEngine.Rendering.BlendMode.One);
+                    material.SetInt(Uniforms.DstBlend, (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                    material.SetInt(Uniforms.ZWrite, 0);
+                    material.DisableKeyword(KeyWords.CutOut);
+                    material.DisableKeyword(KeyWords.Fade);
+                    material.EnableKeyword(KeyWords.Transparent);
                     material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
                     break;
             }
@@ -296,61 +352,78 @@ namespace DaggerfallWorkshop
                 return cm.material;
             }
 
-            // Create new texture settings
-            GetTextureSettings settings = TextureReader.CreateTextureSettings(archive, record, frame, alphaIndex, borderSize, dilate);
-            settings.autoEmissionForWindows = true;
-            settings.sharpen = Sharpen;
-            if (GenerateNormals)
-            {
-                settings.createNormalMap = true;
-                settings.normalStrength = NormalTextureStrength;
-            }
-
-            // Set emissive for self-illuminated textures
-            if (textureReader.IsEmissive(archive, record))
-            {
-                settings.createEmissionMap = true;
-                settings.emissionIndex = -1;
-            }
-
-            // Get texture
-            GetTextureResults results = textureReader.GetTexture2D(settings, AlphaTextureFormat, NonAlphaTextureFormat);
-            rectOut = results.singleRect;
-
-            // Create material
             Material material;
-            if (isBillboard)
-                material = CreateStandardMaterial(CustomBlendMode.Cutout);
+            GetTextureResults results;
+
+            // Try to import a material from mods, otherwise create a standard material
+            // and import textures from Daggerfall files and loose files.
+            if (!TextureReplacement.TextureExistsAmongLooseFiles(archive, record, frame) &&
+                TextureReplacement.TryImportMaterial(archive, record, frame, out material))
+            {
+                results = TextureReplacement.MakeResults(material, archive, record);
+                TextureReplacement.AssignFiltermode(material);
+            }
             else
-                material = CreateStandardMaterial();
-
-            // Setup material
-            material.name = FormatName(archive, record);
-            material.mainTexture = results.albedoMap;
-            material.mainTexture.filterMode = MainFilterMode;
-
-            // Setup normal map
-            if (GenerateNormals && results.normalMap != null)
             {
-                results.normalMap.filterMode = MainFilterMode;
-                material.SetTexture("_BumpMap", results.normalMap);
-                material.EnableKeyword("_NORMALMAP");
-            }
+                // Create new texture settings
+                GetTextureSettings settings = TextureReader.CreateTextureSettings(archive, record, frame, alphaIndex, borderSize, dilate);
+                settings.autoEmissionForWindows = true;
+                settings.sharpen = Sharpen;
+                if (GenerateNormals)
+                {
+                    settings.createNormalMap = true;
+                    settings.normalStrength = NormalTextureStrength;
+                }
 
-            // Setup emission map
-            if (results.isEmissive && !results.isWindow && results.emissionMap != null)
-            {
-                results.emissionMap.filterMode = MainFilterMode;
-                material.SetTexture("_EmissionMap", results.emissionMap);
-                material.SetColor("_EmissionColor", Color.white);
-                material.EnableKeyword("_EMISSION");
-            }
-            else if (results.isEmissive && results.isWindow && results.emissionMap != null)
-            {
-                results.emissionMap.filterMode = MainFilterMode;
-                material.SetTexture("_EmissionMap", results.emissionMap);
-                material.SetColor("_EmissionColor", DayWindowColor * DayWindowIntensity);
-                material.EnableKeyword("_EMISSION");
+                // Set emissive for self-illuminated textures
+                if (textureReader.IsEmissive(archive, record))
+                {
+                    settings.createEmissionMap = true;
+                    settings.emissionIndex = -1;
+                }
+
+                // Get texture
+                results = textureReader.GetTexture2D(settings, AlphaTextureFormat, TextureImport.LooseFiles);
+
+                // Create material
+                if (isBillboard)
+                    material = CreateStandardMaterial(CustomBlendMode.Cutout);
+                else
+                    material = CreateStandardMaterial();
+
+                // Setup material
+                material.name = FormatName(archive, record);
+                material.mainTexture = results.albedoMap;
+                material.mainTexture.filterMode = MainFilterMode;
+
+                // Setup normal map
+                bool importedNormals = TextureReplacement.TextureExistsAmongLooseFiles(settings.archive, settings.record, settings.frame, TextureMap.Normal);
+                if ((GenerateNormals || importedNormals) && results.normalMap != null)
+                {
+                    results.normalMap.filterMode = MainFilterMode;
+                    material.SetTexture(Uniforms.BumpMap, results.normalMap);
+                    material.EnableKeyword(KeyWords.NormalMap);
+                }
+
+                // Setup emission map
+                if (results.isEmissive && !results.isWindow && results.emissionMap != null)
+                {
+                    results.emissionMap.filterMode = MainFilterMode;
+                    material.SetTexture(Uniforms.EmissionMap, results.emissionMap);
+                    material.SetColor(Uniforms.EmissionColor, Color.white);
+                    material.EnableKeyword(KeyWords.Emission);
+                }
+                else if (results.isEmissive && results.isWindow && results.emissionMap != null)
+                {
+                    results.emissionMap.filterMode = MainFilterMode;
+                    material.SetTexture(Uniforms.EmissionMap, results.emissionMap);
+                    material.SetColor(Uniforms.EmissionColor, DayWindowColor * DayWindowIntensity);
+                    material.EnableKeyword(KeyWords.Emission);
+                }
+
+                // Import additional custom components of material
+                TextureReplacement.CustomizeMaterial(archive, record, frame, material);
+
             }
 
             // Setup cached material
@@ -367,7 +440,7 @@ namespace DaggerfallWorkshop
                 albedoMap = results.albedoMap,
                 normalMap = results.normalMap,
                 emissionMap = results.emissionMap,
-                singleRect = rectOut,
+                singleRect = rectOut = results.singleRect,
                 material = material,
                 filterMode = MainFilterMode,
                 isWindow = results.isWindow,
@@ -455,7 +528,8 @@ namespace DaggerfallWorkshop
 
             // Setup material
             material.name = string.Format("TEXTURE.{0:000} [Atlas]", archive);
-            GetTextureResults results = textureReader.GetTexture2DAtlas(settings, AlphaTextureFormat, NonAlphaTextureFormat);
+            GetTextureResults results = textureReader.GetTexture2DAtlas(settings, AlphaTextureFormat);
+
             material.mainTexture = results.albedoMap;
             material.mainTexture.filterMode = MainFilterMode;
 
@@ -463,17 +537,17 @@ namespace DaggerfallWorkshop
             if (GenerateNormals && results.normalMap != null)
             {
                 results.normalMap.filterMode = MainFilterMode;
-                material.SetTexture("_BumpMap", results.normalMap);
-                material.EnableKeyword("_NORMALMAP");
+                material.SetTexture(Uniforms.BumpMap, results.normalMap);
+                material.EnableKeyword(KeyWords.NormalMap);
             }
 
             // Setup emission map
             if (results.isEmissive && results.emissionMap != null)
             {
                 results.emissionMap.filterMode = MainFilterMode;
-                material.SetTexture("_EmissionMap", results.emissionMap);
-                material.SetColor("_EmissionColor", Color.white);
-                material.EnableKeyword("_EMISSION");
+                material.SetTexture(Uniforms.EmissionMap, results.emissionMap);
+                material.SetColor(Uniforms.EmissionColor, Color.white);
+                material.EnableKeyword(KeyWords.Emission);
             }
 
             // TEMP: Bridging between legacy material out params and GetTextureResults for now
@@ -537,12 +611,76 @@ namespace DaggerfallWorkshop
             // Not currently generating normals as very slow on such a large texture
             // and results are not very noticeable
             GetTextureResults results = textureReader.GetTerrainTilesetTexture(archive);
+
             results.albedoMap.filterMode = MainFilterMode;
 
             Shader shader = Shader.Find(_DaggerfallTilemapShaderName);
             Material material = new Material(shader);
             material.name = string.Format("TEXTURE.{0:000} [Tilemap]", archive);
             material.SetTexture("_TileAtlasTex", results.albedoMap);
+
+            CachedMaterial newcm = new CachedMaterial()
+            {
+                key = key,
+                keyGroup = TileMapKeyGroup,
+                material = material,
+                filterMode = MainFilterMode,
+            };
+            materialDict.Add(key, newcm);
+
+            return material;
+        }
+        
+        /// <summary>
+        /// Gets Unity Material from Daggerfall terrain using texture arrays.
+        /// </summary>
+        /// <param name="archive">Archive index.</param>
+        /// <returns>Material or null.</returns>
+        public Material GetTerrainTextureArrayMaterial(int archive)
+        {
+            // Ready check
+            if (!IsReady)
+                return null;
+
+            // Return from cache if present
+            int key = MakeTextureKey((short)archive, (byte)0, (byte)0, TileMapKeyGroup);
+            if (materialDict.ContainsKey(key))
+            {
+                CachedMaterial cm = materialDict[key];
+                if (cm.filterMode == MainFilterMode)
+                {
+                    // Properties are the same
+                    return cm.material;
+                }
+                else
+                {
+                    // Properties don't match, remove material and reload
+                    materialDict.Remove(key);
+                }
+            }
+
+            // Generate texture array
+            Texture2DArray textureArrayTerrainTiles = textureReader.GetTerrainAlbedoTextureArray(archive);
+            Texture2DArray textureArrayTerrainTilesNormalMap = textureReader.GetTerrainNormalMapTextureArray(archive);
+            Texture2DArray textureArrayTerrainTilesMetallicGloss = textureReader.GetTerrainMetallicGlossMapTextureArray(archive);
+            textureArrayTerrainTiles.filterMode = MainFilterMode;
+
+            Shader shader = Shader.Find(_DaggerfallTilemapTextureArrayShaderName);
+            Material material = new Material(shader);
+            material.name = string.Format("TEXTURE.{0:000} [TilemapTextureArray]", archive);
+
+            material.SetTexture(TileTexArrUniforms.TileTexArr, textureArrayTerrainTiles);
+            if (textureArrayTerrainTilesNormalMap != null)
+            {
+                // if normal map texture array was loaded successfully enable normalmap in shader and set texture
+                material.SetTexture(TileTexArrUniforms.TileNormalMapTexArr, textureArrayTerrainTilesNormalMap);
+                material.EnableKeyword(KeyWords.NormalMap);
+            }
+            if (textureArrayTerrainTilesMetallicGloss != null)
+            {
+                // if metallic gloss map texture array was loaded successfully set texture (should always contain a valid texture array - since it defaults to 1x1 textures)
+                material.SetTexture(TileTexArrUniforms.TileMetallicGlossMapTexArr, textureArrayTerrainTilesMetallicGloss);
+            }
 
             CachedMaterial newcm = new CachedMaterial()
             {
@@ -637,6 +775,39 @@ namespace DaggerfallWorkshop
         }
 
         /// <summary>
+        /// Gets CachedMaterial properties for a billboard with custom material.
+        /// </summary>
+        /// <param name="archive">Archive index.</param>
+        /// <param name="record">Record index.</param>
+        /// <param name="cachedMaterialOut">CachedMaterial out</param>
+        /// <returns>True if CachedMaterial found.</returns>
+        public bool GetCachedMaterialCustomBillboard(int archive, int record, int frame, out CachedMaterial cachedMaterialOut)
+        {
+            int key = MakeTextureKey((short)archive, (byte)record, (byte)frame, CustomBillboardKeyGroup);
+            if (materialDict.ContainsKey(key))
+            {
+                cachedMaterialOut = materialDict[key];
+                return true;
+            }
+
+            cachedMaterialOut = new CachedMaterial();
+            return false;
+        }
+
+        /// <summary>
+        /// Sets CachedMaterial properties for a billboard with custom material.
+        /// </summary>
+        /// <param name="archive">Archive index.</param>
+        /// <param name="record">Record index.</param>
+        public void SetCachedMaterialCustomBillboard(int archive, int record, int frame, CachedMaterial cachedMaterialIn)
+        {
+            int key = MakeTextureKey((short)archive, (byte)record, (byte)frame, CustomBillboardKeyGroup);
+            cachedMaterialIn.key = key;
+            cachedMaterialIn.keyGroup = CustomBillboardKeyGroup;
+            materialDict.Add(key, cachedMaterialIn);
+        }
+
+        /// <summary>
         /// Get a new Material based on climate.
         /// </summary>
         /// <param name="key">Material key.</param>
@@ -678,19 +849,19 @@ namespace DaggerfallWorkshop
             switch (windowStyle)
             {
                 case WindowStyle.Day:
-                    material.SetColor("_EmissionColor", DayWindowColor * DayWindowIntensity);
+                    material.SetColor(Uniforms.EmissionColor, DayWindowColor * DayWindowIntensity);
                     break;
                 case WindowStyle.Night:
-                    material.SetColor("_EmissionColor", NightWindowColor * NightWindowIntensity);
+                    material.SetColor(Uniforms.EmissionColor, NightWindowColor * NightWindowIntensity);
                     break;
                 case WindowStyle.Fog:
-                    material.SetColor("_EmissionColor", FogWindowColor * FogWindowIntensity);
+                    material.SetColor(Uniforms.EmissionColor, FogWindowColor * FogWindowIntensity);
                     break;
                 case WindowStyle.Custom:
-                    material.SetColor("_EmissionColor", CustomWindowColor * CustomWindowIntensity);
+                    material.SetColor(Uniforms.EmissionColor, CustomWindowColor * CustomWindowIntensity);
                     break;
                 case WindowStyle.Disabled:
-                    material.SetColor("_EmissionColor", Color.black);
+                    material.SetColor(Uniforms.EmissionColor, Color.black);
                     break;
             }
         }

@@ -4,6 +4,8 @@
 -- Questor: Brotherhood
 -- Repute: 01
 -- QuestId: 0
+-- Edited for Daggerfall Unity by Jay_H
+-- Temp changes to allow joining DB made by Hazelnut
 Messages: 21
 Quest: L0A01L00
 -- Message panels
@@ -144,8 +146,8 @@ Person _npc_ face 1 group Resident1
 
 Place _mansion_ remote house1
 
-Clock _traveltime_ 00:00 0 flag 1 range 2 5
-Clock _S.01_ 00:00 0 flag 1 range 1 4
+Clock _traveltime_ 14.00:00 0 flag 1 range 2 5
+Clock _S.01_ 30.00:00 0 flag 1 range 1 4
 Clock _delay_ 01:00 0 flag 1 range 0 1
 
 Foe _F.00_ is 2 Assassin
@@ -168,18 +170,25 @@ _S.02_ task:
 	pc at _mansion_ set _S.08_ 
 	place item decanter at _mansion_ 
 	add dialog for location _mansion_ person _darkbmember_ 
-	start timer _traveltime_ 
+	start timer _traveltime_
+    stop timer _S.01_
 	log 1010 step 1 
 	get item _poison_ 
 	say 1015 
 
 _S.03_ task:
+    when hasDecanter and hasPoison
 	give item _poison_ to _F.00_ 
 	say 1019 
 
+variable hasDecanter
+variable hasPoison
+
 _S.04_ task:
 	clicked item decanter 
-	have decanter and _poison_ do _S.03_ 
+--	have decanter and _poison_ do _S.03_
+    have decanter set hasDecanter
+    have poison set hasPoison
 	clear _S.11_ 
 
 _S.05_ task:
@@ -209,7 +218,10 @@ _S.09_ task:
 variable _S.10_
 _S.11_ task:
 	dropped decanter at _mansion_ 
-	clear _S.04_ 
+	clear _S.04_
+    -- End the quest here until quest system supports finding _darkbmember_
+    give pc nothing
+    end quest
 
 _delay_ task:
 	end quest 

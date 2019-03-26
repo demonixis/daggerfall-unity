@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -11,51 +11,28 @@
 
 using UnityEngine;
 using DaggerfallWorkshop.Game.UserInterface;
+using System.Collections;
 using System.Collections.Generic;
 using DaggerfallConnect.Utility;
-
+using DaggerfallConnect.Arena2;
+using DaggerfallWorkshop.Game.Formulas;
+using DaggerfallWorkshop.Game.Utility;
+using DaggerfallWorkshop.Game.Serialization;
+using DaggerfallWorkshop.Utility;
 
 namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 {
 
     public class DaggerfallTravelPopUp : DaggerfallPopupWindow
     {
-
         #region fields
         DaggerfallTravelMapWindow travelWindow = null;
 
         const string nativeImgName = "TRAV0I04.IMG";
 
-        public float InnModifier        = .86f;
-        public float HorseMod           = .5f;
-        public float CartMod            = .75f;
-        public float ShipMod            = 1f;
-        public int CautiousMod          = 2;
+        const float secondsCountdownTickFastTravel = 0.05f; // time used for fast travel countdown for one tick
 
-        public float BaseTemperateTravelTime        = 60.5f;    //represents time to travel 1 pixel on foot recklessly, camping out, for different terrains
-        public float BaseDesert224_225TravelTime    = 63.5f;    //should be fairly close
-        public float BaseDesert229TravelTime        = 65.5f;
-        public float BaseMountain226TravelTime      = 67.5f;
-        public float BaseSwamp227_228TravelTime     = 72.5f;
-        public float BaseMountain230TravelTime      = 60.5f;
-        public float BaseOceanTravelTime            = 153.65f;
-
-
-        enum TerrainTypes
-        {
-            None        = 0,
-            ocean       = 223,
-            Desert      = 224,
-            Desert2     = 225,
-            Mountain    = 226,
-            Swamp       = 227,
-            Swamp2      = 228,
-            Desert3     = 229,
-            Mountain2   = 230,
-            Temperate   = 231,
-            Temperate2  = 232
-        };
- 
+        TravelTimeCalculator travelTimeCalculator = new TravelTimeCalculator();
 
         Color32 toggleColor = new Color32(85, 117, 48, 255);
 
@@ -90,18 +67,22 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         Vector2 shipPos             = new Vector2(165, 63.25f);
         DFPosition endPos           = new DFPosition(109, 158);
 
-        TextLabel avaliableGoldLabel;
+        TextLabel availableGoldLabel;
         TextLabel tripCostLabel;
         TextLabel travelTimeLabel;
 
+        int travelTimeMinutes;
+        int countdownValueTravelTimeDays; // used for remaining days in fast travel countdown
+        bool doFastTravel = false; // flag used to indicate Update() function that fast travel should happen
+        float waitTimer = 0;
+
         bool speedCautious  = true;
-        bool travelFoot     = true;
+        bool travelShip     = true;
         bool sleepModeInn   = true;
 
-        int tripCost = 0;
-        double finalTravelTime = 1;
-
-        List<TerrainTypes> terrains = new List<TerrainTypes>();
+        bool hasHorse = false;
+        bool hasCart = false;
+        bool hasShip = false;
 
         #endregion
 
@@ -109,10 +90,9 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         internal DFPosition EndPos { get { return endPos; } set { endPos = value;} }
         internal DaggerfallTravelMapWindow TravelWindow { get { return travelWindow; } set { travelWindow = value; } }
-
-        public bool PlayerHasHorse { get; set; }
-        public bool PlayerHasCart { get; set; }
-        public bool PlayerHasShip { get; set; }
+        public bool SpeedCautious { get { return speedCautious;} set {speedCautious = value; } }
+        public bool TravelShip { get { return travelShip;} set { travelShip = value;} }
+        public bool SleepModeInn { get { return sleepModeInn; } set { sleepModeInn = value; } }
 
         #endregion
 
@@ -142,8 +122,8 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             travelPanel = DaggerfallUI.AddPanel(nativePanelRect, NativePanel);
             travelPanel.BackgroundTexture = nativeTexture;
 
-            avaliableGoldLabel = DaggerfallUI.AddTextLabel(DaggerfallUI.DefaultFont, new Vector2(148, 97), "0", NativePanel);
-            avaliableGoldLabel.MaxCharacters = 12;
+            availableGoldLabel = DaggerfallUI.AddTextLabel(DaggerfallUI.DefaultFont, new Vector2(148, 97), "0", NativePanel);
+            availableGoldLabel.MaxCharacters = 12;
 
             tripCostLabel = DaggerfallUI.AddTextLabel(DaggerfallUI.DefaultFont, new Vector2(117,107), "0", NativePanel);
             tripCostLabel.MaxCharacters = 18;
@@ -191,9 +171,38 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         public override void OnPush()
         {
             base.OnPush();
-            GetPath(endPos);
+
+            Items.ItemCollection inventory = GameManager.Instance.PlayerEntity.Items;
+            hasHorse = inventory.Contains(Items.ItemGroups.Transportation, (int)Items.Transportation.Horse);
+            hasCart = inventory.Contains(Items.ItemGroups.Transportation, (int)Items.Transportation.Small_cart);
+            hasShip = Banking.DaggerfallBankManager.OwnsShip || GameManager.Instance.GuildManager.FreeShipTravel();
+
             if (base.IsSetup)
                 Refresh();
+        }
+
+        #endregion
+
+        #region Overrides
+
+        public override void Update()
+        {
+            base.Update();
+
+            if (doFastTravel)
+            {
+                if (countdownValueTravelTimeDays > 0)
+                {
+                    TickCountdown();
+                }
+                else
+                {
+                    doFastTravel = false;
+                    DaggerfallUI.Instance.FadeBehaviour.SmashHUDToBlack();
+                    performFastTravel();
+                }
+
+            }
         }
 
         #endregion
@@ -204,11 +213,9 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         //Update when player pushes buttons etc.
         void Refresh()
         {
-            finalTravelTime = CalculateTravelTimeTotal(speedCautious, sleepModeInn, travelFoot);
             UpdateTogglePanels();
             UpdateLabels();
         }
-
 
         //Updates the positions for the panels to indicate which button is selected
         void UpdateTogglePanels()
@@ -221,133 +228,131 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 sleepToggleColorPanel.Position = innPanelPos;
             else
                 sleepToggleColorPanel.Position = campoutPos;
-            if (travelFoot)
-                transportToggleColorPanel.Position = footPos;
-            else
+            if (travelShip)
                 transportToggleColorPanel.Position = shipPos;
-        }
-
-        //Gets path from player location to destination
-        void GetPath(DFPosition endPos)
-        {
-            Vector2[] directions = new Vector2[] { new Vector2(0, 1), new Vector2(1, 0), new Vector2(0, -1), new Vector2(-1, 0), new Vector2(1, 1), new Vector2(-1, 1), new Vector2(1, -1), new Vector2(-1, -1) };
-            //Vector2[] directions = new Vector2[] { new Vector2(0, 1), new Vector2(1, 0), new Vector2(0, -1), new Vector2(-1, 0)}; //4 direction movement
-            Vector2 current = new Vector2(GameManager.Instance.PlayerGPS.CurrentMapPixel.X, GameManager.Instance.PlayerGPS.CurrentMapPixel.Y);
-            Vector2 end = new Vector2(endPos.X, endPos.Y);
-            terrains.Clear();
-            while(current != end)
-            {
-                float distance = Vector2.Distance(current,end);
-                int selection = 0;
-
-                for (int i = 0; i < directions.Length; i++)
-                {
-                    Vector2 next = current + directions[i];
-                    if (current.x < 0 || current.y < 0 || current.x >= DaggerfallConnect.Arena2.MapsFile.MaxMapPixelX || current.y >= DaggerfallConnect.Arena2.MapsFile.MaxMapPixelY)
-                        continue;
-
-                    float check = Vector2.Distance(next, end);
-                    if(check < distance)
-                    {
-                        distance = check;
-                        selection = i;
-                    }
-
-                }
-
-                current += directions[selection];
-                terrains.Add((TerrainTypes)DaggerfallUnity.Instance.ContentReader.MapFileReader.GetClimateIndex((int)current.x, (int)current.y));
-            }
-        }
-
-        float CalculateTravelTimeTotal(bool cautiousSpeed = false, bool inn = false, bool horse = false, bool cart = false, bool ship = false)
-        {
-            float time = 0;
-            foreach(TerrainTypes terrain in terrains)
-            {
-                time += CalculateTravelTime(terrain, cautiousSpeed, inn, horse, cart, ship);
-            }
-
-            //Debug.Log(string.Format("Total Time Cost: {0}  Inn: {1} PlayerHasShip {2} PlayerHasCart: {3} PlayerHasHorse: {4}", time, inn, PlayerHasShip, PlayerHasCart, PlayerHasHorse));
-            return time;
-
-        }
-
-
-        float CalculateTravelTime(TerrainTypes terrainType, bool cautiousSpeed = false, bool inn = false, bool horse = false, bool cart = false, bool ship = false)
-        {
-            float time = 0;
-
-            switch (terrainType)
-            {
-                case TerrainTypes.None:
-                    time += BaseTemperateTravelTime;
-                    break;
-                case TerrainTypes.ocean:
-                    time += BaseOceanTravelTime;
-                    break;
-                case TerrainTypes.Desert:
-                    time += BaseDesert224_225TravelTime;
-                    break;
-                case TerrainTypes.Desert2:
-                    time += BaseDesert224_225TravelTime;
-                    break;
-                case TerrainTypes.Mountain:
-                    time += BaseMountain226TravelTime;
-                    break;
-                case TerrainTypes.Swamp:
-                    time += BaseSwamp227_228TravelTime;
-                    break;
-                case TerrainTypes.Swamp2:
-                    time += BaseSwamp227_228TravelTime;
-                    break;
-                case TerrainTypes.Desert3:
-                    time += BaseDesert229TravelTime;
-                    break;
-                case TerrainTypes.Mountain2:
-                    time += BaseMountain230TravelTime;
-                    break;
-                case TerrainTypes.Temperate:
-                    time += BaseTemperateTravelTime;
-                    break;
-                case TerrainTypes.Temperate2:
-                    time += BaseTemperateTravelTime;
-                    break;
-                default:
-                    time += BaseTemperateTravelTime;
-                    break;
-            }
-
-            if (cautiousSpeed)
-                time = time * 2;
-            if (terrainType == TerrainTypes.ocean && PlayerHasShip)
-                time *= ShipMod;
-            else if (terrainType != TerrainTypes.ocean)
-            {
-                if (inn)
-                    time *= InnModifier;
-                if (PlayerHasCart)
-                    time *= CartMod;
-                else if (PlayerHasHorse)
-                    time *= HorseMod;
-            }
-
-            //Debug.Log(string.Format("Time Cost: {0} Terrain Type: {1} Inn: {2} PlayerHasShip {3} PlayerHasCart: {4} PlayerHasHorse: {5}", time, terrainType.ToString(), inn, PlayerHasShip, PlayerHasCart, PlayerHasHorse));
-            return time;
-
+            else
+                transportToggleColorPanel.Position = footPos;
         }
 
         //Updates text labels
         void UpdateLabels()
         {
-            avaliableGoldLabel.Text = "0";  //##TODO - when player gold implemented, update this
-            tripCostLabel.Text = tripCost.ToString();
+            availableGoldLabel.Text = GameManager.Instance.PlayerEntity.GoldPieces.ToString();
+            travelTimeMinutes = travelTimeCalculator.CalculateTravelTime(endPos, speedCautious, sleepModeInn, travelShip, hasHorse, hasCart);
 
-            int travelTimeHours = (int)finalTravelTime / 60;
-            if (travelTimeHours <= 24)
-                travelTimeLabel.Text = "1";
-            else
-                travelTimeLabel.Text = string.Format("{0}", travelTimeHours / 24);
+            // Players can have fast travel benefit from guild memberships
+            travelTimeMinutes = GameManager.Instance.GuildManager.FastTravel(travelTimeMinutes);
+
+            int travelTimeDaysTotal = (travelTimeMinutes / 1440);
+
+            // Classic always adds 1. For DF Unity, only add 1 if there is a remainder to round up.
+            if ((travelTimeMinutes % 1440) > 0)
+                travelTimeDaysTotal += 1;
+
+            travelTimeCalculator.CalculateTripCost(
+                travelTimeMinutes,
+                sleepModeInn,
+                hasShip,
+                travelShip
+                );
+
+            travelTimeLabel.Text = string.Format("{0}", travelTimeDaysTotal);
+            tripCostLabel.Text = travelTimeCalculator.TotalCost.ToString();
+
+            countdownValueTravelTimeDays = travelTimeDaysTotal;
+        }
+
+        bool TickCountdown()
+        {
+            bool finished = false;
+
+            if (Time.realtimeSinceStartup > waitTimer + secondsCountdownTickFastTravel)
+            {
+                waitTimer = Time.realtimeSinceStartup;
+
+                countdownValueTravelTimeDays--;
+                travelTimeLabel.Text = string.Format("{0}", countdownValueTravelTimeDays);
+                travelTimeLabel.Update();
+
+                finished = true;
+            }
+
+            return finished;
+        }
+
+        // perform fast travel actions
+        private void performFastTravel()
+        {
+            // Cache scene first, if fast travelling while on ship.
+            if (GameManager.Instance.TransportManager.IsOnShip())
+                SaveLoadManager.CacheScene(GameManager.Instance.StreamingWorld.SceneName);
+            GameManager.Instance.StreamingWorld.TeleportToCoordinates((int)endPos.X, (int)endPos.Y, StreamingWorld.RepositionMethods.DirectionFromStartMarker);
+
+            if (speedCautious)
+            {
+                GameManager.Instance.PlayerEntity.CurrentHealth = GameManager.Instance.PlayerEntity.MaxHealth;
+                GameManager.Instance.PlayerEntity.CurrentFatigue = GameManager.Instance.PlayerEntity.MaxFatigue;
+                GameManager.Instance.PlayerEntity.CurrentMagicka = GameManager.Instance.PlayerEntity.MaxMagicka;
+            }
+
+            DaggerfallUnity.WorldTime.DaggerfallDateTime.RaiseTime(travelTimeMinutes * 60);
+
+            // Halt random enemy spawns for next playerEntity update so player isn't bombarded by spawned enemies at the end of a long trip
+            GameManager.Instance.PlayerEntity.PreventEnemySpawns = true;
+
+            // Vampires always arrive just after 6pm regardless of travel type
+            // Otherwise raise arrival time to just after 7am if cautious travel would arrive at night
+            if (GameManager.Instance.PlayerEffectManager.HasVampirism())
+            {
+                DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.RaiseTime((DaggerfallDateTime.DuskHour - DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.Hour) * 3600);
+            }
+            else if (speedCautious)
+            {
+                if ((DaggerfallUnity.WorldTime.DaggerfallDateTime.Hour < 7)
+                    || ((DaggerfallUnity.WorldTime.DaggerfallDateTime.Hour == 7) && (DaggerfallUnity.WorldTime.DaggerfallDateTime.Minute < 10)))
+                {
+                    float raiseTime = (((7 - DaggerfallUnity.WorldTime.DaggerfallDateTime.Hour) * 3600)
+                                        + ((10 - DaggerfallUnity.WorldTime.DaggerfallDateTime.Minute) * 60)
+                                        - DaggerfallUnity.WorldTime.DaggerfallDateTime.Second);
+                    DaggerfallUnity.WorldTime.DaggerfallDateTime.RaiseTime(raiseTime);
+                }
+                else if (DaggerfallUnity.WorldTime.DaggerfallDateTime.Hour > 17)
+                {
+                    float raiseTime = (((31 - DaggerfallUnity.WorldTime.DaggerfallDateTime.Hour) * 3600)
+                    + ((10 - DaggerfallUnity.WorldTime.DaggerfallDateTime.Minute) * 60)
+                    - DaggerfallUnity.WorldTime.DaggerfallDateTime.Second);
+                    DaggerfallUnity.WorldTime.DaggerfallDateTime.RaiseTime(raiseTime);
+                }
+            }
+
+            DaggerfallUI.Instance.UserInterfaceManager.PopWindow();
+            travelWindow.CloseTravelWindows(true);
+            GameManager.Instance.PlayerEntity.RaiseSkills();
+            DaggerfallUI.Instance.FadeBehaviour.FadeHUDFromBlack();
+
+            RaiseOnPostFastTravelEvent();
+        }
+
+        // Return whether player has enough gold for the selected travel options
+        // Taverns only accept gold pieces
+        bool enoughGoldCheck()
+        {
+            return (GameManager.Instance.PlayerEntity.GetGoldAmount() >= travelTimeCalculator.TotalCost) &&
+                   (GameManager.Instance.PlayerEntity.GoldPieces >= travelTimeCalculator.PiecesCost);
+        }
+
+        void showNotEnoughGoldPopup()
+        {
+            const int notEnoughGoldTextId = 454;
+
+            TextFile.Token[] tokens = DaggerfallUnity.TextProvider.GetRSCTokens(notEnoughGoldTextId);
+            if (tokens != null && tokens.Length > 0)
+            {
+                DaggerfallMessageBox messageBox = new DaggerfallMessageBox(uiManager, this);
+                messageBox.SetTextTokens(tokens);
+                messageBox.ClickAnywhereToClose = true;
+                messageBox.Show();
+            }
         }
 
         #endregion
@@ -358,17 +363,64 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         public void BeginButtonOnClickHandler(BaseScreenComponent sender, Vector2 position)
         {
             Refresh();
-            Debug.Log("Final Travel Time: " + finalTravelTime);
-            GameManager.Instance.StreamingWorld.TeleportToCoordinates((int)endPos.X, (int)endPos.Y, StreamingWorld.RepositionMethods.RandomStartMarker);
-            DaggerfallUnity.WorldTime.DaggerfallDateTime.RaiseTime((float)finalTravelTime * 60);
-            terrains.Clear();
-            DaggerfallUI.Instance.UserInterfaceManager.PopWindow();
-            travelWindow.CloseTravelWindows(true);
+
+            // Warns player if they have a disease
+            if (GameManager.Instance.PlayerEffectManager.DiseaseCount > 0 || GameManager.Instance.PlayerEffectManager.PoisonCount > 0)
+            {
+                DaggerfallMessageBox messageBox = new DaggerfallMessageBox(uiManager, this);
+                TextFile.Token[] tokens = DaggerfallUnity.Instance.TextProvider.GetRandomTokens(1010);
+                messageBox.SetTextTokens(tokens);
+                messageBox.AddButton(DaggerfallMessageBox.MessageBoxButtons.Yes);
+                messageBox.AddButton(DaggerfallMessageBox.MessageBoxButtons.No);
+                messageBox.OnButtonClick += ConfirmTravelPopupDiseasedButtonClick;
+                uiManager.PushWindow(messageBox);
+            }
+            else
+            {
+                CallFastTravelGoldCheck();
+            }
+        }
+
+        public override void CancelWindow()
+        {
+            doFastTravel = false;
+            base.CancelWindow();
+        }
+
+        /// <summary>
+        /// Button handler for travel-with-incubating-disease confirmation pop up.
+        /// </summary>
+        void ConfirmTravelPopupDiseasedButtonClick(DaggerfallMessageBox sender, DaggerfallMessageBox.MessageBoxButtons messageBoxButton)
+        {
+            sender.CloseWindow();
+
+            if (messageBoxButton == DaggerfallMessageBox.MessageBoxButtons.Yes)
+            {
+                CallFastTravelGoldCheck();
+            }
+            else
+                return;
+        }
+
+        void CallFastTravelGoldCheck()
+        {
+            if (!enoughGoldCheck())
+            {
+                showNotEnoughGoldPopup();
+                return;
+            }
+            else
+            {
+                GameManager.Instance.PlayerEntity.GoldPieces -= travelTimeCalculator.PiecesCost;
+                GameManager.Instance.PlayerEntity.DeductGoldAmount(travelTimeCalculator.TotalCost - travelTimeCalculator.PiecesCost);
+            }
+
+            doFastTravel = true; // initiate fast travel (Update() function will perform fast travel when this flag is true)
         }
 
         public void ExitButtonOnClickHandler(BaseScreenComponent sender, Vector2 position)
         {
-            terrains.Clear();
+            doFastTravel = false;
             DaggerfallUI.Instance.UserInterfaceManager.PopWindow();
         }
 
@@ -380,7 +432,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         public void TransportModeButtonOnClickHandler(BaseScreenComponent sender, Vector2 position)
         {
-            travelFoot = !travelFoot;
+            travelShip = !travelShip;
             Refresh();
         }
 
@@ -388,6 +440,15 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         {
             sleepModeInn = !sleepModeInn;
             Refresh();
+        }
+
+        // OnPostFastTravel
+        public delegate void OnOnPostFastTravelEventHandler();
+        public static event OnOnPostFastTravelEventHandler OnPostFastTravel;
+        void RaiseOnPostFastTravelEvent()
+        {
+            if (OnPostFastTravel != null)
+                OnPostFastTravel();
         }
 
         #endregion

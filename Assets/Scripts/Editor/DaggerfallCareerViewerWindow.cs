@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -151,8 +151,8 @@ namespace DaggerfallWorkshop
                 {
                     GUILayoutHelper.Horizontal(() =>
                     {
-                        EditorGUILayout.LabelField("HP Per Level / Monster Level");
-                        EditorGUILayout.SelectableLabel(selectedCareer.HitPointsPerLevelOrMonsterLevel.ToString(), EditorStyles.textField, GUILayout.Height(EditorGUIUtility.singleLineHeight));
+                        EditorGUILayout.LabelField("Max HP Per Class Level / Number of Monster HP Die Rolls");
+                        EditorGUILayout.SelectableLabel(selectedCareer.HitPointsPerLevel.ToString(), EditorStyles.textField, GUILayout.Height(EditorGUIUtility.singleLineHeight));
                     });
                     GUILayoutHelper.Horizontal(() =>
                     {
@@ -272,13 +272,37 @@ namespace DaggerfallWorkshop
                             GUILayoutHelper.Horizontal(() =>
                             {
                                 string monsterDamage = string.Format("{0}-{1}", enemy.MinDamage, enemy.MaxDamage);
-                                EditorGUILayout.LabelField("Monster Damage");
+                                EditorGUILayout.LabelField("Monster Damage 1");
                                 EditorGUILayout.SelectableLabel(monsterDamage, EditorStyles.textField, GUILayout.Height(EditorGUIUtility.singleLineHeight));
+                            });
+                            GUILayoutHelper.Horizontal(() =>
+                            {
+                                string monsterDamage2 = string.Format("{0}-{1}", enemy.MinDamage2, enemy.MaxDamage2);
+                                EditorGUILayout.LabelField("Monster Damage 2");
+                                EditorGUILayout.SelectableLabel(monsterDamage2, EditorStyles.textField, GUILayout.Height(EditorGUIUtility.singleLineHeight));
+                            });
+                            GUILayoutHelper.Horizontal(() =>
+                            {
+                                string monsterDamage3 = string.Format("{0}-{1}", enemy.MinDamage3, enemy.MaxDamage3);
+                                EditorGUILayout.LabelField("Monster Damage 3");
+                                EditorGUILayout.SelectableLabel(monsterDamage3, EditorStyles.textField, GUILayout.Height(EditorGUIUtility.singleLineHeight));
                             });
                             GUILayoutHelper.Horizontal(() =>
                             {
                                 EditorGUILayout.LabelField("Required Metal");
                                 EditorGUILayout.SelectableLabel(enemy.MinMetalToHit.ToString(), EditorStyles.textField, GUILayout.Height(EditorGUIUtility.singleLineHeight));
+                            });
+                            GUILayoutHelper.Horizontal(() =>
+                            {
+                                string level = string.Format("{0}", enemy.Level);
+                                EditorGUILayout.LabelField("Level");
+                                EditorGUILayout.SelectableLabel(level, EditorStyles.textField, GUILayout.Height(EditorGUIUtility.singleLineHeight));
+                            });
+                            GUILayoutHelper.Horizontal(() =>
+                            {
+                                string armorValue = string.Format("{0}", enemy.ArmorValue);
+                                EditorGUILayout.LabelField("Armor Value");
+                                EditorGUILayout.SelectableLabel(armorValue, EditorStyles.textField, GUILayout.Height(EditorGUIUtility.singleLineHeight));
                             });
                         }
                     }

@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -11,8 +11,8 @@
 
 #region Using Statements
 using System;
-using System.Text;
 using System.IO;
+using System.Collections.Generic;
 using DaggerfallConnect.Utility;
 #endregion
 
@@ -44,7 +44,7 @@ namespace DaggerfallConnect.Arena2
         /// <summary>
         /// All region names.
         /// </summary>
-        private string[] regionNames = {
+        private static readonly string[] regionNames = {
             "Alik'r Desert", "Dragontail Mountains", "Glenpoint Foothills", "Daggerfall Bluffs",
             "Yeorth Burrowland", "Dwynnen", "Ravennian Forest", "Devilrock",
             "Malekna Forest", "Isle of Balfiera", "Bantha", "Dak'fron",
@@ -52,7 +52,7 @@ namespace DaggerfallConnect.Arena2
             "Wrothgarian Mountains", "Daggerfall", "Glenpoint", "Betony", "Sentinel", "Anticlere", "Lainlyn", "Wayrest",
             "Gen Tem High Rock village", "Gen Rai Hammerfell village", "Orsinium Area", "Skeffington Wood",
             "Hammerfell bay coast", "Hammerfell sea coast", "High Rock bay coast", "High Rock sea coast",
-            "Northmoor", "Menevia", "Alcaire", "Koegria", "Bhoriane", "Kambria", "Phrygias", "Urvaius",
+            "Northmoor", "Menevia", "Alcaire", "Koegria", "Bhoraine", "Kambria", "Phrygias", "Urvaius",
             "Ykalon", "Daenia", "Shalgora", "Abibon-Gora", "Kairou", "Pothago", "Myrkwasa", "Ayasofya",
             "Tigonus", "Kozanset", "Satakalaam", "Totambu", "Mournoth", "Ephesus", "Santaki", "Antiphyllos",
             "Bergama", "Gavaudon", "Tulune", "Glenumbra Moors", "Ilessan Hills", "Cybiades"
@@ -61,29 +61,24 @@ namespace DaggerfallConnect.Arena2
         /// <summary>
         /// Block file prefixes.
         /// </summary>
-        private string[] rmbBlockPrefixes = {
-	        "TVRN", "GENR", "RESI", "WEAP", "ARMR", "ALCH", "BANK", "BOOK",
-	        "CLOT", "FURN", "GEMS", "LIBR", "PAWN", "TEMP", "TEMP", "PALA",
-	        "FARM", "DUNG", "CAST", "MANR", "SHRI", "RUIN", "SHCK", "GRVE",
-	        "FILL", "KRAV", "KDRA", "KOWL", "KMOO", "KCAN", "KFLA", "KHOR",
-	        "KROS", "KWHE", "KSCA", "KHAW", "MAGE", "THIE", "DARK", "FIGH",
-	        "CUST", "WALL", "MARK", "SHIP", "WITC"
+        private readonly string[] rmbBlockPrefixes = {
+            "TVRN", "GENR", "RESI", "WEAP", "ARMR", "ALCH", "BANK", "BOOK",
+            "CLOT", "FURN", "GEMS", "LIBR", "PAWN", "TEMP", "TEMP", "PALA",
+            "FARM", "DUNG", "CAST", "MANR", "SHRI", "RUIN", "SHCK", "GRVE",
+            "FILL", "KRAV", "KDRA", "KOWL", "KMOO", "KCAN", "KFLA", "KHOR",
+            "KROS", "KWHE", "KSCA", "KHAW", "MAGE", "THIE", "DARK", "FIGH",
+            "CUST", "WALL", "MARK", "SHIP", "WITC"
         };
 
         /// <summary>
-        /// Temple number array.
+        /// Letters that form the second part of an RMB block name.
         /// </summary>
-        private string[] rmbTempleNumbers = { "A0", "B0", "C0", "D0", "E0", "F0", "G0", "H0" };
-
-        /// <summary>
-        /// RMB block letters array.
-        /// </summary>
-        private string[] rmbBlockLetters = { "AA", "BA", "AL", "BL", "AM", "BM", "AS", "BS", "GA", "GL", "GM", "GS" };
+        readonly string[] letter2Array = { "A", "L", "M", "S" };
 
         /// <summary>
         /// RDB block letters array.
         /// </summary>
-        private string[] rdbBlockLetters = { "N", "W", "L", "S", "B", "M" };
+        private readonly string[] rdbBlockLetters = { "N", "W", "L", "S", "B", "M" };
 
         /// <summary>
         /// Auto-discard behaviour enabled or disabled.
@@ -98,7 +93,7 @@ namespace DaggerfallConnect.Arena2
         /// <summary>
         /// The BsaFile representing MAPS.BSA.
         /// </summary>
-        private BsaFile bsaFile = new BsaFile();
+        private readonly BsaFile bsaFile = new BsaFile();
 
         /// <summary>
         /// Array of decomposed region records.
@@ -159,7 +154,7 @@ namespace DaggerfallConnect.Arena2
         /// <summary>
         /// Gets default MAPS.BSA filename.
         /// </summary>
-        static public string Filename
+        public static string Filename
         {
             get { return "MAPS.BSA"; }
         }
@@ -214,7 +209,7 @@ namespace DaggerfallConnect.Arena2
         /// <summary>
         /// Gets all region names as string array.
         /// </summary>
-        public string[] RegionNames
+        public static string[] RegionNames
         {
             get { return regionNames; }
         }
@@ -247,10 +242,24 @@ namespace DaggerfallConnect.Arena2
 
         #region Static Properties
 
+        public enum Climates
+        {
+            Ocean = 223,
+            Desert = 224,
+            Desert2 = 225, // seen in dak'fron
+            Mountain = 226,
+            Rainforest = 227,
+            Swamp = 228,
+            Subtropical = 229,
+            MountainWoods = 230,
+            Woodlands = 231,
+            HauntedWoodlands = 232 // not sure where this is?
+        }
+
         /// <summary>
         /// Gets default climate index.
         /// </summary>
-        static public int DefaultClimate
+        public static int DefaultClimate
         {
             get { return 231; }
         }
@@ -258,7 +267,7 @@ namespace DaggerfallConnect.Arena2
         /// <summary>
         /// Gets default climate settings.
         /// </summary>
-        static public DFLocation.ClimateSettings DefaultClimateSettings
+        public static DFLocation.ClimateSettings DefaultClimateSettings
         {
             get { return GetWorldClimateSettings(DefaultClimate); }
         }
@@ -336,8 +345,8 @@ namespace DaggerfallConnect.Arena2
         /// <summary>
         /// Converts map pixel to world coord.
         /// </summary>
-        /// <param name="worldX">Map pixel X.</param>
-        /// <param name="worldZ">Map pixel Y.</param>
+        /// <param name="mapPixelX">Map pixel X.</param>
+        /// <param name="mapPixelY">Map pixel Y.</param>
         /// <returns>World position.</returns>
         public static DFPosition MapPixelToWorldCoord(int mapPixelX, int mapPixelY)
         {
@@ -384,7 +393,7 @@ namespace DaggerfallConnect.Arena2
         /// </summary>
         /// <param name="worldClimate">Climate value from CLIMATE.PAK. Valid range is 223-232.</param>
         /// <returns>Climate settings for specified world climate value.</returns>
-        static public DFLocation.ClimateSettings GetWorldClimateSettings(int worldClimate)
+        public static DFLocation.ClimateSettings GetWorldClimateSettings(int worldClimate)
         {
             // Create settings struct
             DFLocation.ClimateSettings settings = new DFLocation.ClimateSettings();
@@ -393,71 +402,86 @@ namespace DaggerfallConnect.Arena2
             // Set based on world climate
             switch (worldClimate)
             {
-                case 223:   // Ocean
+                case (int)Climates.Ocean:   // Ocean
                     settings.ClimateType = DFLocation.ClimateBaseType.Swamp;
                     settings.GroundArchive = 402;
-                    settings.NatureArchive = 504;
+                    settings.NatureArchive = (int)DFLocation.ClimateTextureSet.Nature_TemperateWoodland;
                     settings.SkyBase = 24;
+                    settings.People = FactionFile.FactionRaces.Breton;
+                    settings.Names = FactionFile.FactionRaces.Breton;
                     break;
-                case 224:
+                case (int)Climates.Desert:
+                case (int)Climates.Desert2:
                     settings.ClimateType = DFLocation.ClimateBaseType.Desert;
                     settings.GroundArchive = 2;
-                    settings.NatureArchive = 503;
+                    settings.NatureArchive = (int)DFLocation.ClimateTextureSet.Nature_Desert;
                     settings.SkyBase = 8;
+                    settings.People = FactionFile.FactionRaces.Redguard;
+                    settings.Names = FactionFile.FactionRaces.Redguard;
                     break;
-                case 225:
-                    settings.ClimateType = DFLocation.ClimateBaseType.Desert;
-                    settings.GroundArchive = 2;
-                    settings.NatureArchive = 503;
-                    settings.SkyBase = 8;
-                    break;
-                case 226:
+                case (int)Climates.Mountain:
                     settings.ClimateType = DFLocation.ClimateBaseType.Mountain;
                     settings.GroundArchive = 102;
-                    settings.NatureArchive = 510;
+                    settings.NatureArchive = (int)DFLocation.ClimateTextureSet.Nature_Mountains;
                     settings.SkyBase = 0;
+                    settings.People = FactionFile.FactionRaces.Nord;
+                    settings.Names = FactionFile.FactionRaces.Nord;
                     break;
-                case 227:
+                case (int)Climates.Rainforest:
                     settings.ClimateType = DFLocation.ClimateBaseType.Swamp;
                     settings.GroundArchive = 402;
-                    settings.NatureArchive = 500;
+                    settings.NatureArchive = (int)DFLocation.ClimateTextureSet.Nature_RainForest;
                     settings.SkyBase = 24;
+                    settings.People = FactionFile.FactionRaces.Redguard;
+                    settings.Names = FactionFile.FactionRaces.Redguard;
                     break;
-                case 228:
+                case (int)Climates.Swamp:
                     settings.ClimateType = DFLocation.ClimateBaseType.Swamp;
                     settings.GroundArchive = 402;
-                    settings.NatureArchive = 502;
+                    settings.NatureArchive = (int)DFLocation.ClimateTextureSet.Nature_Swamp;
                     settings.SkyBase = 24;
+                    settings.People = FactionFile.FactionRaces.Breton;
+                    settings.Names = FactionFile.FactionRaces.Redguard;
                     break;
-                case 229:
+                case (int)Climates.Subtropical:
                     settings.ClimateType = DFLocation.ClimateBaseType.Desert;
                     settings.GroundArchive = 2;
-                    settings.NatureArchive = 501;
+                    settings.NatureArchive = (int)DFLocation.ClimateTextureSet.Nature_SubTropical;
                     settings.SkyBase = 24;
+                    settings.People = FactionFile.FactionRaces.Breton;
+                    settings.Names = FactionFile.FactionRaces.Redguard;
                     break;
-                case 230:
-                    settings.ClimateType = DFLocation.ClimateBaseType.Mountain;
+                case (int)Climates.MountainWoods:
+                    settings.ClimateType = DFLocation.ClimateBaseType.Temperate;
                     settings.GroundArchive = 102;
-                    settings.NatureArchive = 504;
+                    settings.NatureArchive = (int)DFLocation.ClimateTextureSet.Nature_TemperateWoodland;
                     settings.SkyBase = 16;
+                    settings.People = FactionFile.FactionRaces.Breton;
+                    settings.Names = FactionFile.FactionRaces.Breton;
                     break;
-                case 231:
+                case (int)Climates.Woodlands:
                     settings.ClimateType = DFLocation.ClimateBaseType.Temperate;
                     settings.GroundArchive = 302;
-                    settings.NatureArchive = 504;
+                    settings.NatureArchive = (int)DFLocation.ClimateTextureSet.Nature_TemperateWoodland;
                     settings.SkyBase = 16;
+                    settings.People = FactionFile.FactionRaces.Breton;
+                    settings.Names = FactionFile.FactionRaces.Breton;
                     break;
-                case 232:
+                case (int)Climates.HauntedWoodlands:
                     settings.ClimateType = DFLocation.ClimateBaseType.Temperate;
                     settings.GroundArchive = 302;
-                    settings.NatureArchive = 508;
+                    settings.NatureArchive = (int)DFLocation.ClimateTextureSet.Nature_HauntedWoodlands;
                     settings.SkyBase = 16;
+                    settings.People = FactionFile.FactionRaces.Breton;
+                    settings.Names = FactionFile.FactionRaces.Breton;
                     break;
                 default:
                     settings.ClimateType = DFLocation.ClimateBaseType.Temperate;
                     settings.GroundArchive = 302;
-                    settings.NatureArchive = 504;
+                    settings.NatureArchive = (int)DFLocation.ClimateTextureSet.Nature_TemperateWoodland;
                     settings.SkyBase = 16;
+                    settings.People = FactionFile.FactionRaces.Breton;
+                    settings.Names = FactionFile.FactionRaces.Breton;
                     break;
             }
 
@@ -665,6 +689,14 @@ namespace DaggerfallConnect.Arena2
             dfLocation.RegionIndex = region;
             dfLocation.LocationIndex = location;
 
+            // Generate smaller dungeon when enabled
+            if (dfLocation.HasDungeon &&
+                DaggerfallWorkshop.DaggerfallUnity.Settings.SmallerDungeons &&
+                !DaggerfallWorkshop.DaggerfallDungeon.IsMainStoryDungeon(dfLocation.MapTableData.MapId))
+            {
+                GenerateSmallerDungeon(ref dfLocation);
+            }
+
             return dfLocation;
         }
 
@@ -692,66 +724,81 @@ namespace DaggerfallConnect.Arena2
         }
 
         /// <summary>
-        /// Resolve block name for exterior block.
+        /// Lookup block name for exterior block from location data provided.
         /// </summary>
-        /// <param name="dfLocation">DFLocation to resolve block name.</param>
+        /// <param name="dfLocation">DFLocation to read block name.</param>
         /// <param name="x">Block X coordinate.</param>
         /// <param name="y">Block Y coordinate.</param>
         /// <returns>Block name.</returns>
         public string GetRmbBlockName(ref DFLocation dfLocation, int x, int y)
         {
-            string letters = string.Empty;
-            string numbers = string.Empty;
+            int index = y * dfLocation.Exterior.ExteriorData.Width + x;
+            return dfLocation.Exterior.ExteriorData.BlockNames[index];
+        }
 
+        /// <summary>
+        /// Resolve block name for exterior block from X, Y coordinates.
+        /// </summary>
+        /// <param name="dfLocation">DFLocation to resolve block name.</param>
+        /// <param name="x">Block X coordinate.</param>
+        /// <param name="y">Block Y coordinate.</param>
+        /// <returns>Block name.</returns>
+        public string ResolveRmbBlockName(ref DFLocation dfLocation, int x, int y)
+        {
             // Get indices
             int offset = y * dfLocation.Exterior.ExteriorData.Width + x;
             byte blockIndex = dfLocation.Exterior.ExteriorData.BlockIndex[offset];
             byte blockNumber = dfLocation.Exterior.ExteriorData.BlockNumber[offset];
             byte blockCharacter = dfLocation.Exterior.ExteriorData.BlockCharacter[offset];
 
+            return ResolveRmbBlockName(ref dfLocation, blockIndex, blockNumber, blockCharacter);
+        }
+
+        /// <summary>
+        /// Resolve block name from raw components.
+        /// </summary>
+        /// <param name="dfLocation">DFLocation to resolve block name.</param>
+        /// <param name="blockIndex">Block index.</param>
+        /// <param name="blockNumber">Block number.</param>
+        /// <param name="blockCharacter">Block character.</param>
+        /// <returns>Block name.</returns>
+        public string ResolveRmbBlockName(ref DFLocation dfLocation, byte blockIndex, byte blockNumber, byte blockCharacter)
+        {
+            string letter1 = string.Empty;
+            string letter2 = string.Empty;
+            string numbers = string.Empty;
+
             // Get prefix
             string prefix = rmbBlockPrefixes[blockIndex];
 
-            // Get letters and numbers
+            // Get letter 1
+            if ((blockCharacter & 0x10) != 0)
+            {
+                int asciiValue = dfLocation.Exterior.ExteriorData.Letter1ForRMBName;
+                letter1 = char.ConvertFromUtf32(asciiValue);
+            }
+            else
+                letter1 = "A";
+
+            // Get letter 2
+            letter2 = letter2Array[(byte)(2 * blockCharacter) >> 6];
+
+            // Get block number as a string
+            string blockNumberString = blockNumber.ToString();
+
             if (blockIndex == 13 || blockIndex == 14)
             {
-                // Handle temple logic
-                if (7 < blockCharacter) letters = "GA"; else letters = "AA";
-                numbers = rmbTempleNumbers[blockCharacter & 7];
+                // Handle temple numbers
+                int asciivalue = (blockCharacter & 0xF) + 65;
+                numbers = char.ConvertFromUtf32(asciivalue) + blockNumberString;
             }
             else
             {
                 // Numbers are uniform in non-temple blocks
                 numbers = string.Format("{0:00}", blockNumber);
-
-                // Letters have some special cases
-                byte q = (byte)(blockCharacter / 16);
-                if (dfLocation.Name == "Wayrest")
-                {
-                    // Handle Wayrest exceptions
-                    if (prefix == "CUST")
-                        q = 0;
-                    else
-                        if (q > 0) q--;
-                }
-                else if (dfLocation.Name == "Sentinel")
-                {
-                    // Handle Sentinel exceptions
-                    if (prefix == "CUST")
-                        q = 8;
-                }
-                else
-                {
-                    // Default
-                    if (prefix == "CUST")
-                        q = 0;
-                }
-
-                // Resolve letters
-                letters = rmbBlockLetters[q];
             }
 
-            return prefix + letters + numbers + ".RMB";
+            return prefix + letter1 + letter2 + numbers + ".RMB";
         }
 
         /// <summary>
@@ -832,7 +879,7 @@ namespace DaggerfallConnect.Arena2
 
                 // Read MapDItem for this location
                 reader = regions[region].MapDItem.GetReader();
-                ReadMapDItem(ref reader, region, location, ref dfLocation);
+                ReadMapDItem(ref reader, region, ref dfLocation);
 
                 // Copy RegionMapTable data to this location
                 dfLocation.MapTableData = regions[region].DFRegion.MapTable[location];
@@ -858,7 +905,7 @@ namespace DaggerfallConnect.Arena2
         /// <param name="dfLocation">DFLocation.</param>
         private void ReadClimatePoliticData(ref DFLocation dfLocation)
         {
-            DFPosition pos = LongitudeLatitudeToMapPixel((int)dfLocation.MapTableData.Longitude, (int)dfLocation.MapTableData.Latitude);
+            DFPosition pos = LongitudeLatitudeToMapPixel(dfLocation.MapTableData.Longitude, dfLocation.MapTableData.Latitude);
 
             // Read politic data. This should always equal region index + 128.
             dfLocation.Politic = politicPak.GetValue(pos.X, pos.Y);
@@ -885,7 +932,7 @@ namespace DaggerfallConnect.Arena2
             for (int i = 0; i < regions[region].DFRegion.LocationCount; i++)
             {
                 // Read map name data
-                regions[region].DFRegion.MapNames[i] = regions[region].MapNames.ReadCStringSkip(reader, 0, 32);
+                regions[region].DFRegion.MapNames[i] = FileProxy.ReadCStringSkip(reader, 0, 32);
 
                 // Add to dictionary
                 if (!regions[region].DFRegion.MapNameLookup.ContainsKey(regions[region].DFRegion.MapNames[i]))
@@ -909,19 +956,47 @@ namespace DaggerfallConnect.Arena2
             {
                 // Read map table data
                 regions[region].DFRegion.MapTable[i].MapId = reader.ReadInt32();
-                regions[region].DFRegion.MapTable[i].Unknown1 = reader.ReadByte();
                 bitfield = reader.ReadUInt32();
-                regions[region].DFRegion.MapTable[i].LongitudeTypeBitfield = bitfield;
-                regions[region].DFRegion.MapTable[i].Longitude = bitfield & 0x1ffff;
-                regions[region].DFRegion.MapTable[i].LocationType = (DFRegion.LocationTypes)(bitfield >> 17);
-                regions[region].DFRegion.MapTable[i].Latitude = reader.ReadUInt16();
-                regions[region].DFRegion.MapTable[i].DungeonType = (DFRegion.DungeonTypes)reader.ReadUInt16();
-                regions[region].DFRegion.MapTable[i].Unknown3 = reader.ReadUInt32();
+                regions[region].DFRegion.MapTable[i].Longitude = (int)(bitfield & 0x1FFFFFF) >> 8;
+                regions[region].DFRegion.MapTable[i].LocationType = (DFRegion.LocationTypes)((4 * bitfield) >> 27);
+                regions[region].DFRegion.MapTable[i].Discovered = ((bitfield >> 24) & 0x40) != 0;
+                regions[region].DFRegion.MapTable[i].Latitude = (reader.ReadInt32() & 0xFFFFFF) >> 8;
+                regions[region].DFRegion.MapTable[i].DungeonType = (DFRegion.DungeonTypes)reader.ReadByte();
+                regions[region].DFRegion.MapTable[i].Key = reader.ReadUInt32();
 
                 // Add to dictionary
                 if (!regions[region].DFRegion.MapIdLookup.ContainsKey(regions[region].DFRegion.MapTable[i].MapId))
                     regions[region].DFRegion.MapIdLookup.Add(regions[region].DFRegion.MapTable[i].MapId, i);
             }
+        }
+
+        /// <summary>
+        /// Quickly reads the LocationId with minimal overhead.
+        /// Region must be loaded before calling this method.
+        /// </summary>
+        /// <param name="region">Region index.</param>
+        /// <param name="location">Location index.</param>
+        /// <returns>LocationId.</returns>
+        public int ReadLocationIdFast(int region, int location)
+        {
+            // Get reader
+            BinaryReader reader = regions[region].MapPItem.GetReader();
+
+            // Position reader at location record by reading offset and adding to end of offset table
+            reader.BaseStream.Position = location * 4;
+            reader.BaseStream.Position = (regions[region].DFRegion.LocationCount * 4) + reader.ReadUInt32();
+
+            // Skip doors (+6 bytes per door)
+            UInt32 doorCount = reader.ReadUInt32();
+            reader.BaseStream.Position += doorCount * 6;
+
+            // Skip to LocationId (+33 bytes)
+            reader.BaseStream.Position += 33;
+
+            // Read the LocationId
+            int locationId = reader.ReadUInt16();
+
+            return locationId;
         }
 
         /// <summary>
@@ -953,8 +1028,11 @@ namespace DaggerfallConnect.Arena2
             for (int building = 0; building < dfLocation.Exterior.BuildingCount; building++)
             {
                 dfLocation.Exterior.Buildings[building].NameSeed = reader.ReadUInt16();
-                dfLocation.Exterior.Buildings[building].NullValue1 = reader.ReadUInt64();
-                dfLocation.Exterior.Buildings[building].NullValue2 = reader.ReadUInt64();
+                dfLocation.Exterior.Buildings[building].ServiceTimeLimit = reader.ReadUInt32();
+                dfLocation.Exterior.Buildings[building].Unknown = reader.ReadUInt16();
+                dfLocation.Exterior.Buildings[building].Unknown2 = reader.ReadUInt16();
+                dfLocation.Exterior.Buildings[building].Unknown3 = reader.ReadUInt32();
+                dfLocation.Exterior.Buildings[building].Unknown4 = reader.ReadUInt32();
                 dfLocation.Exterior.Buildings[building].FactionId = reader.ReadUInt16();
                 dfLocation.Exterior.Buildings[building].Sector = reader.ReadInt16();
                 dfLocation.Exterior.Buildings[building].LocationId = reader.ReadUInt16();
@@ -963,22 +1041,38 @@ namespace DaggerfallConnect.Arena2
             }
 
             // Read ExteriorData
-            dfLocation.Exterior.ExteriorData.AnotherName = regions[region].MapPItem.ReadCStringSkip(reader, 0, 32);
+            dfLocation.Exterior.ExteriorData.AnotherName = FileProxy.ReadCStringSkip(reader, 0, 32);
             dfLocation.Exterior.ExteriorData.MapId = reader.ReadInt32();
             dfLocation.Exterior.ExteriorData.LocationId = reader.ReadUInt32();
             dfLocation.Exterior.ExteriorData.Width = reader.ReadByte();
             dfLocation.Exterior.ExteriorData.Height = reader.ReadByte();
-            dfLocation.Exterior.ExteriorData.Unknown2 = reader.ReadBytes(7);
+            dfLocation.Exterior.ExteriorData.Unknown2 = reader.ReadBytes(4);
+            dfLocation.Exterior.ExteriorData.Letter1ForRMBName = reader.ReadByte();
+            dfLocation.Exterior.ExteriorData.PortTownAndUnknown = reader.ReadByte();
+            dfLocation.Exterior.ExteriorData.Unknown3 = reader.ReadByte();
             dfLocation.Exterior.ExteriorData.BlockIndex = reader.ReadBytes(64);
             dfLocation.Exterior.ExteriorData.BlockNumber = reader.ReadBytes(64);
             dfLocation.Exterior.ExteriorData.BlockCharacter = reader.ReadBytes(64);
-            dfLocation.Exterior.ExteriorData.Unknown3 = reader.ReadBytes(34);
+            dfLocation.Exterior.ExteriorData.Unknown4 = reader.ReadBytes(34);
             dfLocation.Exterior.ExteriorData.NullValue1 = reader.ReadUInt64();
             dfLocation.Exterior.ExteriorData.NullValue2 = reader.ReadByte();
-            dfLocation.Exterior.ExteriorData.Unknown4 = new UInt32[22];
-            for (int i = 0; i < 22; i++) dfLocation.Exterior.ExteriorData.Unknown4[i] = reader.ReadUInt32();
+            dfLocation.Exterior.ExteriorData.Unknown5 = new UInt32[22];
+            for (int i = 0; i < 22; i++) dfLocation.Exterior.ExteriorData.Unknown5[i] = reader.ReadUInt32();
             dfLocation.Exterior.ExteriorData.NullValue3 = reader.ReadBytes(40);
-            dfLocation.Exterior.ExteriorData.Unknown5 = reader.ReadUInt32();
+            dfLocation.Exterior.ExteriorData.Unknown6 = reader.ReadUInt32();
+
+            // Get block names
+            int totalBlocks = dfLocation.Exterior.ExteriorData.Width * dfLocation.Exterior.ExteriorData.Height;
+            dfLocation.Exterior.ExteriorData.BlockNames = new string[totalBlocks];
+            for (int i = 0; i < totalBlocks; i++)
+            {
+                // Construct block name
+                dfLocation.Exterior.ExteriorData.BlockNames[i] = ResolveRmbBlockName(
+                    ref dfLocation,
+                    dfLocation.Exterior.ExteriorData.BlockIndex[i],
+                    dfLocation.Exterior.ExteriorData.BlockNumber[i],
+                    dfLocation.Exterior.ExteriorData.BlockCharacter[i]);
+            }
         }
 
         /// <summary>
@@ -1019,7 +1113,7 @@ namespace DaggerfallConnect.Arena2
             recordElement.Header.IsInterior = reader.ReadUInt16();
             recordElement.Header.ExteriorLocationId = reader.ReadUInt32();
             recordElement.Header.NullValue6 = reader.ReadBytes(26);
-            recordElement.Header.LocationName = regions[region].MapPItem.ReadCStringSkip(reader, 0, 32);
+            recordElement.Header.LocationName = FileProxy.ReadCStringSkip(reader, 0, 32);
             recordElement.Header.Unknown3 = reader.ReadBytes(9);
         }
 
@@ -1028,9 +1122,8 @@ namespace DaggerfallConnect.Arena2
         /// </summary>
         /// <param name="reader">A binary reader to data.</param>
         /// <param name="region">Region index.</param>
-        /// <param name="location">Location index.</param>
         /// <param name="dfLocation">Destination DFLocation.</param>
-        private void ReadMapDItem(ref BinaryReader reader, int region, int location, ref DFLocation dfLocation)
+        private void ReadMapDItem(ref BinaryReader reader, int region, ref DFLocation dfLocation)
         {
             // Exit if no data
             dfLocation.HasDungeon = false;
@@ -1084,7 +1177,7 @@ namespace DaggerfallConnect.Arena2
                 // Decompose bitfield
                 UInt16 bitfield = dfLocation.Dungeon.Blocks[i].BlockNumberStartIndexBitfield;
                 dfLocation.Dungeon.Blocks[i].BlockNumber = (UInt16)(bitfield & 0x3ff);
-                dfLocation.Dungeon.Blocks[i].IsStartingBlock = ((bitfield & 0x400) == 0x400) ? true : false;
+                dfLocation.Dungeon.Blocks[i].IsStartingBlock = ((bitfield & 0x400) == 0x400);
                 dfLocation.Dungeon.Blocks[i].BlockIndex = (Byte)(bitfield >> 11);
 
                 // Compose block name
@@ -1093,6 +1186,100 @@ namespace DaggerfallConnect.Arena2
 
             // Set dungeon flag
             dfLocation.HasDungeon = true;
+        }
+
+        #endregion
+
+        #region ExperimentalSmallerDungeons
+
+        // Generates a smaller dungeon by overwriting the block layout
+        // Creates a single interior block surrounded by 4 border blocks (smallest viable dungeon)
+        // Should not be called for main story dungeons
+        // Will filter out dungeons that are already below a threshold size
+        void GenerateSmallerDungeon(ref DFLocation dfLocation)
+        {
+            // Smallest viable dungeon block count, comprised of 1x interior block and 4x border blocks
+            const int threshold = 5;
+
+            // Must not be called for main story dungeons
+            if (DaggerfallWorkshop.DaggerfallDungeon.IsMainStoryDungeon(dfLocation.MapTableData.MapId))
+                throw new Exception("GenerateSmallerDungeon() must not be called on a main story dungeon.");
+
+            // Ignore small dungeons under threshold - this will exclude already small crypts and the like
+            if (dfLocation.Dungeon.Blocks == null || dfLocation.Dungeon.Blocks.Length <= threshold)
+                return;
+
+            // Dungeon layout might be looked up multiple times in a row by different systems
+            // It is expected to see this output more than once in log when generating quests, etc.
+            // Disabling for now just to reduce spam to logs
+            //UnityEngine.Debug.LogFormat("Generating smaller dungeon for {0}/{1}", dfLocation.RegionName, dfLocation.Name);
+
+            // TODO: Some potential issues for later:
+            //  * Quests assigned to a dungeon will probably break/crash as marker layout different in smaller dungeon, must handle this
+            //  * Might need to ensure automap cache is cleared when switching smaller dungeons setting on/off
+
+            // Seed random generation with map ID so we get the same layout each time map is looked up
+            DaggerfallWorkshop.DFRandom.Seed = (uint)dfLocation.MapTableData.MapId;
+
+            // Generate new dungeon layout with smallest viable dungeon (1x normal block surrounded by 4x border blocks)
+            DFLocation.DungeonBlock[] layout = new DFLocation.DungeonBlock[5];
+            layout[0] = GenerateRDBBlock(0, 0, false, true, ref dfLocation);           // Central starting block
+            layout[1] = GenerateRDBBlock(0, -1, true, false, ref dfLocation);          // North border block
+            layout[2] = GenerateRDBBlock(-1, 0, true, false, ref dfLocation);          // West border block
+            layout[3] = GenerateRDBBlock(1, 0, true, false, ref dfLocation);           // East border block
+            layout[4] = GenerateRDBBlock(0, 1, true, false, ref dfLocation);           // South border block
+
+            // Inject new block array into location
+            dfLocation.Dungeon.Blocks = layout;
+        }
+
+        /// <summary>
+        /// Generates a new dungeon block by selecting one at random from a reference dungeon layout.
+        /// </summary>
+        /// <param name="x">X block tile position.</param>
+        /// <param name="z">Z block tile position.</param>
+        /// <param name="borderBlock">True to select a border block, false to select an interior block.</param>
+        /// <param name="startingBlock">True to make this a starting block (must only be one).</param>
+        /// <param name="dfLocation">Reference location to select a random block from.</param>
+        /// <returns>DFLocation.DungeonBlock</returns>
+        DFLocation.DungeonBlock GenerateRDBBlock(sbyte x, sbyte z, bool borderBlock, bool startingBlock, ref DFLocation dfLocation)
+        {
+            // Get random block from reference location and overwrite some properties
+            DFLocation.DungeonBlock block = GetRandomBlock(borderBlock, ref dfLocation);
+            block.X = x;
+            block.Z = z;
+            block.IsStartingBlock = startingBlock;
+
+            return block;
+        }
+
+        /// <summary>
+        /// Gets a random block from reference location.
+        /// </summary>
+        /// <param name="borderBlock">True to select a border block, false to select an interior block.</param>
+        /// <param name="dfLocation">Reference location to select a random block from.</param>
+        /// <returns>DFLocation.DungeonBlock</returns>
+        DFLocation.DungeonBlock GetRandomBlock(bool borderBlock, ref DFLocation dfLocation)
+        {
+            List<DFLocation.DungeonBlock> filteredBlocks = new List<DFLocation.DungeonBlock>();
+            foreach (DFLocation.DungeonBlock block in dfLocation.Dungeon.Blocks)
+            {
+                // Is this a border block?
+                bool isBorderBlock = block.BlockName.StartsWith("B", StringComparison.InvariantCultureIgnoreCase);
+
+                // Collect blocks based on params
+                if (borderBlock && isBorderBlock)
+                    filteredBlocks.Add(block);
+                else if (!borderBlock && !isBorderBlock)
+                    filteredBlocks.Add(block);
+            }
+
+            // Should have found at least one block
+            if (filteredBlocks.Count == 0)
+                throw new Exception(string.Format("GetRandomBlock() failed to find a suitable block. borderBlock={0}, region={1}, location={2}", borderBlock.ToString(), dfLocation.RegionName, dfLocation.Name));
+
+            // Select a random index from pool and return this block
+            return filteredBlocks[DaggerfallWorkshop.DFRandom.random_range(filteredBlocks.Count)];
         }
 
         #endregion

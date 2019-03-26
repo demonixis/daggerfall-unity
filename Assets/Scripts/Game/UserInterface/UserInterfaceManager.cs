@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -162,7 +162,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
         }
 
         /// <summary>
-        /// Peek message at front of queue with removing.
+        /// Peek message at front of queue without removing.
         /// </summary>
         public string PeekMessage()
         {
@@ -189,15 +189,30 @@ namespace DaggerfallWorkshop.Game.UserInterface
         private void RemoveWindow()
         {
             UserInterfaceWindow oldWindow = TopWindow;
-            if (oldWindow != null)
+            if (oldWindow != null && !(TopWindow is UserInterfaceWindows.DaggerfallHUD))
             {
-                oldWindow.OnPop();
                 windows.Pop();
+                oldWindow.OnPop();
                 if (TopWindow != null)
                     TopWindow.OnReturn();
             }
-            if (windows.Count <= 1 && GameManager.HasInstance)
-                GameManager.Instance.PauseGame(false);
+
+            if (DaggerfallUI.Instance.enableHUD)
+            {
+                if (windows.Count <= 1 && GameManager.HasInstance)
+                {
+                    GameManager.Instance.PauseGame(false);
+                    GameManager.Instance.PlayerActivate.SetClickDelay();
+                }
+            }
+            else
+            {
+                if (windows.Count < 1 && GameManager.HasInstance)
+                {
+                    GameManager.Instance.PauseGame(false);
+                    GameManager.Instance.PlayerActivate.SetClickDelay();
+                }
+            }
         }
 
         /// <summary>

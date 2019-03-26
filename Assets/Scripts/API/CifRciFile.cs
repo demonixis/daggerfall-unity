@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -11,7 +11,6 @@
 
 #region Using Statements
 using System;
-using System.Text;
 using System.IO;
 using DaggerfallConnect.Utility;
 #endregion
@@ -561,6 +560,7 @@ namespace DaggerfallConnect.Arena2
         {
             // Setup frame to hold extracted image
             int length = records[record].Header.Width * records[record].Header.Height;
+            records[record].Frames[frame] = new DFBitmap();
             records[record].Frames[frame].Width = records[record].Header.Width;
             records[record].Frames[frame].Height = records[record].Header.Height;
             records[record].Frames[frame].Data = new byte[length];
@@ -573,39 +573,6 @@ namespace DaggerfallConnect.Arena2
             ReadRleData(ref reader, length, ref writer);
 
             return true;
-        }
-
-        /// <summary>
-        /// Reads RLE compressed data from source reader to destination writer.
-        /// </summary>
-        /// <param name="reader">Source reader positioned at start of input data.</param>
-        /// <param name="length">Length of source data.</param>
-        /// <param name="writer">Destination writer positioned at start of output data.</param>
-        /// <returns>True if succeeded, otherwise false.</returns>
-        private void ReadRleData(ref BinaryReader reader, int length, ref BinaryWriter writer)
-        {
-            // Read image bytes
-            byte pixel = 0;
-            byte code = 0;
-            int pos = 0;
-            do
-            {
-                code = reader.ReadByte();
-                if (code > 127)
-                {
-                    pixel = reader.ReadByte();
-                    for (int i = 0; i < code - 127; i++)
-                    {
-                        writer.Write(pixel);
-                        pos++;
-                    }
-                }
-                else
-                {
-                    writer.Write(reader.ReadBytes(code + 1));
-                    pos += (code + 1);
-                }
-            } while (pos < length);
         }
 
         #endregion

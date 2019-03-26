@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -17,7 +17,7 @@ using System.IO;
 using DaggerfallConnect;
 using DaggerfallConnect.Arena2;
 using DaggerfallWorkshop;
-using DaggerfallWorkshop.Utility;
+using DaggerfallWorkshop.Utility.AssetInjection;
 using DaggerfallWorkshop.Game.Entity;
 using DaggerfallWorkshop.Game.Player;
 
@@ -100,9 +100,14 @@ namespace DaggerfallWorkshop.Game.UserInterface
         void SetCurrentFace()
         {
             currentFaceTexture = faceTextures[faceIndex];
+
             if (currentFaceTexture != null)
             {
-                facePanel.Size = new Vector2(currentFaceTexture.width, currentFaceTexture.height);
+                if (raceGender == Genders.Male)
+                    facePanel.Size = TextureReplacement.GetSize(currentFaceTexture, raceTemplate.PaperDollHeadsMale, faceIndex);
+                else if (raceGender == Genders.Female)
+                    facePanel.Size = TextureReplacement.GetSize(currentFaceTexture, raceTemplate.PaperDollHeadsFemale, faceIndex);
+
                 facePanel.BackgroundTexture = currentFaceTexture;
             }
         }
@@ -123,7 +128,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
         void NextFaceButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
             faceIndex++;
-            if (faceIndex >= maxFaceIndex)
+            if (faceIndex > maxFaceIndex)
                 faceIndex = minFaceIndex;
 
             SetCurrentFace();

@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -10,9 +10,7 @@
 //
 
 using System;
-using System.Text;
 using System.IO;
-using System.Collections;
 using System.Collections.Generic;
 using DaggerfallConnect.Utility;
 
@@ -28,12 +26,12 @@ namespace DaggerfallConnect.Save
 
         // Public fields
         public SaveTreeHeader Header;
-        public SaveTreeLocationDetail LocationDetail;
+        public SaveTreeBuildingRecords BuildingRecords;
         public SaveTreeBaseRecord RootRecord = new SaveTreeBaseRecord();
         public Dictionary<uint, SaveTreeBaseRecord> RecordDictionary = new Dictionary<uint, SaveTreeBaseRecord>();
 
         // Private fields
-        FileProxy saveTreeFile = new FileProxy();
+        readonly FileProxy saveTreeFile = new FileProxy();
         int duplicateKeysFound = 0;
 
         /// <summary>
@@ -73,8 +71,8 @@ namespace DaggerfallConnect.Save
             Header = new SaveTreeHeader();
             Header.Read(reader);
 
-            // Read location detail
-            LocationDetail = new SaveTreeLocationDetail(reader);
+            // Read building records
+            BuildingRecords = new SaveTreeBuildingRecords(reader);
 
             // Read remaining records
             ReadRecords(reader);
@@ -150,7 +148,7 @@ namespace DaggerfallConnect.Save
         {
             List<SaveTreeBaseRecord> newList = new List<SaveTreeBaseRecord>();
 
-            foreach(SaveTreeBaseRecord record in source)
+            foreach (SaveTreeBaseRecord record in source)
             {
                 if (record.Parent == null)
                     continue;
@@ -173,8 +171,7 @@ namespace DaggerfallConnect.Save
         {
             RecordPosition position = new RecordPosition();
             position.WorldX = reader.ReadInt32();
-            position.YOffset = reader.ReadUInt16();
-            position.YBase = reader.ReadUInt16();
+            position.WorldY = reader.ReadInt32();
             position.WorldZ = reader.ReadInt32();
 
             return position;
@@ -188,8 +185,7 @@ namespace DaggerfallConnect.Save
         public static void WritePosition(BinaryWriter writer, RecordPosition position)
         {
             writer.Write(position.WorldX);
-            writer.Write(position.YOffset);
-            writer.Write(position.YBase);
+            writer.Write(position.WorldY);
             writer.Write(position.WorldZ);
         }
 
@@ -238,16 +234,25 @@ namespace DaggerfallConnect.Save
                     case RecordTypes.Item:
                         record = new ItemRecord(reader, length);
                         break;
+                    case RecordTypes.Character:
+                        record = new CharacterRecord(reader, length);
+                        break;
                     case RecordTypes.Spell:
                         record = new SpellRecord(reader, length);
                         break;
-                    case RecordTypes.Character:
-                        record = new CharacterRecord(reader, length);
+                    case RecordTypes.GuildMembership:
+                        record = new GuildMembershipRecord(reader, length);
+                        break;
+                    case RecordTypes.DiseaseOrPoison:
+                        record = new DiseaseOrPoisonRecord(reader, length);
+                        break;
+                    case RecordTypes.TrappedSoul:
+                        record = new TrappedSoulRecord(reader, length);
                         break;
                     case RecordTypes.Container:
                         record = new ContainerRecord(reader, length);
                         break;
-                    //case RecordTypes.UnknownTownLink:
+                    //case RecordTypes.Door:
                     //    record = new SaveTreeBaseRecord(reader, length);    // Read then skip these records for now
                     //    continue;
                     //case RecordTypes.DungeonData:
@@ -319,10 +324,8 @@ namespace DaggerfallConnect.Save
     /// <summary>
     /// Character position record in header.
     /// </summary>
-    public struct CharacterPositionRecord
+    public struct HeaderCharacterPositionRecord
     {
-        public Byte RecordType;                 // Must always be 0x01
-        public UInt16 Unknown;
         public RecordPosition Position;
     }
 
@@ -332,60 +335,103 @@ namespace DaggerfallConnect.Save
     public struct RecordPosition
     {
         public Int32 WorldX;                    // WorldX coordinate
-        public UInt16 YOffset;                  // Altitude offset?
-        public UInt16 YBase;                    // Altitude base?
+        public Int32 WorldY;                    // WorldY coordinate
         public Int32 WorldZ;                    // WorldZ coordinate
     }
 
     public struct RecordRoot
     {
+        // Some parts are identified based on save-game viewer "chunktcl"
+
+        public Int16 Pitch;                     // Pitch of object
+        public Int16 Yaw;                       // Yaw of object
+        public Int16 Roll;                      // Roll of object
         public RecordPosition Position;         // Position of the object in world (if applicable)
-        public UInt32 RecordID;                 // Unique ID of this record
+        public UInt16 SpriteIndex;              // chunktcl's description: 3d view picture. Called "sprite index" by Fixsave.
+        public UInt16 Picture2;                 // chunktcl's description: Inventory picture
+        public UInt32 RecordID;                 // Unique ID of this record. Called "mapID" and "map identifier" by Fixsave.
         public Byte QuestID;                    // Associated quest ID of this record (0 if no quest)
         public UInt32 ParentRecordID;           // ID of parent record
+        public UInt32 Time;                     // Time in game minutes. Known uses: Time for magically-created items to disappear, time for items under repair to be done being repaired.
+        public UInt32 ItemObject;               // chunktcl's description: ItemObject. Active spell/spell book/permanent treasure container
+        public UInt32 QuestObjectID;            // chunktcl's description: QuestObjectID
+        public UInt32 NextObject;               // chunktcl's description: Link to next object in series
+        public UInt32 ChildObject;              // chunktcl's description: Link to first child object in series
+        public UInt32 SublistHead;              // chunktcl's description: Sublist head. Link to parent object of series
         public RecordTypes ParentRecordType;    // Type of parent record
     }
 
     /// <summary>
-    /// Types of SaveTree records encountered.
+    /// Player environment types.
+    /// </summary>
+    public enum Environments
+    {
+        Outside = 1,
+        Building = 2,
+        Dungeon = 3,
+    }
+
+    /// <summary>
+    /// Types of SaveTree records/Daggerfall game objects.
+    /// "Classic name" refers to the name found in FALL.EXE for this object type. These names only go as far as "OneShot".
+    /// The name "Light" is not in the list of names in the retail FALL.EXE but can be found in one of the Daggerfall demo executables
+    /// where each name is preceded by "OBJ_" as "OBJ_LIGHT".
     /// </summary>
     public enum RecordTypes
     {
         Null = 0x00,
-        CharacterPosition = 0x01,
-        Item = 0x02,
-        Character = 0x03,
-        CharacterParentUnknown1 = 0x04,
-        CharacterParentUnknown2 = 0x05,
-        Unknown1 = 0x06,
-        DungeonInformation = 0x07,                  // Length MUST be multiplied by 39 (0x27)
-        Unknown2 = 0x08,
-        Spell = 0x09,
-        GuildMembership = 0x0a,
-        QBNData = 0x0e,
-        QBNDataParent1 = 0x10,
-        QBNDataParent2 = 0x12,
-        SpellcastingCreatureListHead = 0x16,
-        ControlSetting = 0x17,
-        LocationName1 = 0x18,                       // Possibly logbook entries
-        BankAccount = 0x19,
-        PotionMix = 0x1f,
-        UnknownTownLink = 0x20,
-        UnknownDungeonRecord = 0x21,                // Usually in dungeon saves
-        Creature1 = 0x22,
-        UnknownItemRecord = 0x24,                   // Possibly items on store shelves
-        MysteryRecord1 = 0x27,                      // Referenced but does not exist in file
-        LocationName2 = 0x28,                       // Possibly for quests
-        LocationName3 = 0x29,                       // Possible for quests
+        World = 0x01,                               // Classic name = World. Parent of various objects.
+        Item = 0x02,                                // Classic name = Flat
+        Character = 0x03,                           // Classic name = User
+        CharacterPositionRecord = 0x04,             // Classic name = Move. This record, not the position in the SAVETREE.DAT header, determines where player is when the game loads.
+        CharacterCamera = 0x05,                     // Classic name = Eye. The player's view. Has the same position as CharacterPositionRecord.
+        Interactable3dObject = 0x06,                // Classic name = 3D. Levers, switches, moving platforms, etc.
+        Light = 0x07,                               // Classic name = Light. Created for lights in dungeons and for projectile spells.
+        NPCFlat = 0x08,                             // Classic name = Person.
+        Spell = 0x09,                               // Classic name = Spell
+        GuildMembership = 0x0a,                     // Classic name = Guild
+        DiseaseOrPoison = 0x0b,                     // Classic name = Condition
+        UnusedClass = 0x0c,                         // Classic name = Class. Seems to be unused.
+        UnusedKeyword = 0x0d,                       // Classic name = Keyword. Seems to be unused.
+        QBNData = 0x0e,                             // Classic name = Quest
+        UnusedKeyHolder = 0x0f,                     // Classic name = Keyholder. Seems to be unused.
+        QuestHolder = 0x10,                         // Classic name = QuestHolder. Fixsave calls this "quest tree".
+        UnusedNPC = 0x11,                           // Classic name = NPC. Seems to be unused
+        EnemyMobile = 0x12,                         // Classic name = Monster
+        Trap = 0x13,                                // Classic name = Trap
+        TrappedSoul = 0x14,                         // Classic name = Soul
+        // 0x15 unused
+        SpellcastingCreatureListHead = 0x16,        // Classic name = Holder
+        Options = 0x17,                             // Classic name = Options. Fixsave calls this "user options"
+        Logbook = 0x18,                             // Classic name = Logbook
+        BankAccount = 0x19,                         // Classic name = BankHolder
+        UnusedBankInfo = 0x1a,                      // Classic name = BankInfo. Seems to be unused.
+        UnusedSafetyBox = 0x1b,                     // Classic name = SafetyBox. Seems to be unused.
+        OldClass = 0x1c,                            // Classic name = OldClass. Stores player's class when they've been transformed to vampire/werething.
+        OldGuild = 0x1d,                            // Classic name = OldGuild. Stores player's guild affiliations when they've been transformed to vampire/werething.
+        UnusedBless = 0x1e,                         // Classic name = Bless. Seems to be unused.
+        Potion = 0x1f,                              // Classic name = Potion
+        Door = 0x20,                                // Classic name = Door
+        Treasure = 0x21,                            // Classic name = Scene
+        Marker = 0x22,                              // Classic name = Marker. Spawn markers, quest markers, teleport markers, etc.
+        UnusedRumor = 0x23,                         // Classic name = Rumor. Seems to be unused.
+        Goods = 0x24,                               // Classic name = Goods. Items on store shelves.
+        UnusedDeed = 0x25,                          // Classic name = Deed. Seems to be unused.
+        House = 0x26,                               // Classic name = House
+        NonWorld = 0x27,                            // Classic name = NonWorld. Parent of various objects.
+        RegionMark = 0x28,                          // Classic name = RegionMark
+        NPCMark = 0x29,                             // Classic name = NPCmark
+        OneShot = 0x2a,                             // Classic name = OneShot. Hit effect (blood spray, magic sparkles)
         MysteryRecord2 = 0x2b,                      // Referenced but does not exist in file
-        Creature2 = 0x2c,
+        Corpse = 0x2c,                              // Dead mobile
         NPC = 0x2d,
         GenericNPC = 0x2e,
-        DungeonData = 0x33,                         // Huge but mostly zero filled
-        Container = 0x34,
+        DungeonAutomapData = 0x33,                  // Huge but mostly zero filled
+        Container = 0x34,                           // Fixsave calls this "item holder". 0 = weapons & armor, 1 = magic items, 2 = clothing & misc, 3 = ingredients, 4 = wagon, 5 = house, 6 = ship, 7 = tavern rooms, 8 = item repairers
+        NPCMobile = 0x35,                           // Mobile NPCs wandering around outside
         ItemLeftForRepair = 0x36,
-        Unknown3 = 0x40,                            // All are part of a 'container'
-        Unknown4 = 0x41,                            // Possibly quest information
+        TavernRoom = 0x40,                          // Stores information for player items left in tavern.
+        QuestNPC = 0x41,                            // Fixsave calls this "quest NPC". chunktcl calls this "Qbn questor"
     }
 
     #endregion

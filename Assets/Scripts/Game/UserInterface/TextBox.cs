@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -12,11 +12,14 @@
 using UnityEngine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.IO;
 
 namespace DaggerfallWorkshop.Game.UserInterface
 {
+    public enum NumericMode { Natural, Integer, Float }
+
     /// <summary>
     /// Implements a single line text edit box.
     /// </summary>
@@ -24,20 +27,31 @@ namespace DaggerfallWorkshop.Game.UserInterface
     {
         int maxCharacters = 31;
         int cursorPosition = 0;
+        int widthOverride = 0;
         DaggerfallFont font;
         TextCursor textCursor = new TextCursor();
         string text = string.Empty;
         string defaultText = string.Empty;
         Color defaultTextColor = new Color(0.7f, 0.7f, 0.7f, 0.8f);
         int lastStringLength = 0;
+        int textOffset = 0;
         Vector2 maxSize = Vector2.zero;
         bool readOnly = false;
         bool numeric = false;
+        NumericMode numericMode = NumericMode.Natural;
+        bool upperOnly = false;
+        bool fixedSize = false;
 
         public int MaxCharacters
         {
             get { return maxCharacters; }
             set { maxCharacters = value; MaxSize = CalculateMaximumSize(); }
+        }
+
+        public int WidthOverride
+        {
+              get { return widthOverride; }
+              set { widthOverride = value; }
         }
 
         public DaggerfallFont Font
@@ -69,10 +83,22 @@ namespace DaggerfallWorkshop.Game.UserInterface
             set { defaultTextColor = value; }
         }
 
+        public int TextOffset
+        {
+            get { return textOffset; }
+            set { textOffset = value; }
+        }
+
         public Vector2 MaxSize
         {
             get { return maxSize; }
             set { maxSize = value; }
+        }
+
+        public bool FixedSize
+        {
+            get { return fixedSize; }
+            set { fixedSize = value; }
         }
 
         public bool ReadOnly
@@ -92,6 +118,18 @@ namespace DaggerfallWorkshop.Game.UserInterface
             set { numeric = value; }
         }
 
+        public NumericMode NumericMode
+        {
+            get { return numericMode; }
+            set { numericMode = value; }
+        }
+
+        public bool UpperOnly
+        {
+            get { return upperOnly; }
+            set { upperOnly = value; }
+        }
+
         public TextBox(DaggerfallFont font = null)
         {
             if (font == null)
@@ -101,7 +139,9 @@ namespace DaggerfallWorkshop.Game.UserInterface
 
             Components.Add(textCursor);
             MaxSize = CalculateMaximumSize();
-            this.Size = CalculateCurrentSize();
+
+            if (!fixedSize)
+                this.Size = CalculateCurrentSize();
         }
 
         public override void Update()
@@ -112,11 +152,21 @@ namespace DaggerfallWorkshop.Game.UserInterface
             if (readOnly)
                 return;
 
+            // Do nothing if focus-enabled and does not have focus
+            if (UseFocus && !HasFocus())
+                return;
+
             // Moving cursor left and right
             if (DaggerfallUI.Instance.LastKeyCode == KeyCode.LeftArrow)
+            {
                 MoveCursorLeft();
+                return;
+            }
             else if (DaggerfallUI.Instance.LastKeyCode == KeyCode.RightArrow)
+            {
                 MoveCursorRight();
+                return;
+            }
 
             // Delete and Backspace
             if (DaggerfallUI.Instance.LastKeyCode == KeyCode.Delete)
@@ -126,6 +176,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
                     text = text.Remove(cursorPosition, 1);
                     RaiseOnTypeHandler();
                 }
+                return;
             }
             else if (DaggerfallUI.Instance.LastKeyCode == KeyCode.Backspace)
             {
@@ -135,13 +186,20 @@ namespace DaggerfallWorkshop.Game.UserInterface
                     MoveCursorLeft();
                     RaiseOnTypeHandler();
                 }
+                return;
             }
 
             // Home and End
             if (DaggerfallUI.Instance.LastKeyCode == KeyCode.Home)
+            {
                 SetCursorPosition(0);
+                return;
+            }
             else if (DaggerfallUI.Instance.LastKeyCode == KeyCode.End)
+            {
                 SetCursorPosition(text.Length);
+                return;
+            }
 
             // Return/enter
             if (DaggerfallUI.Instance.LastKeyCode == KeyCode.Return ||
@@ -154,12 +212,41 @@ namespace DaggerfallWorkshop.Game.UserInterface
             char character = DaggerfallUI.Instance.LastCharacterTyped;
             if (character != 0 && text.Length < maxCharacters)
             {
-                // For numeric only accept characters 0-9
                 if (numeric)
                 {
+                    const char minus = '-';
+                    const char dot = '.';
+
                     int value = (int)character;
                     if (value < 0x30 || value > 0x39)
-                        return;
+                    {
+                        if (character == minus)
+                        {
+                            // Allow negative numbers only if not natural
+                            if (numericMode == NumericMode.Natural)
+                                return;
+
+                            if (cursorPosition != 0 || (text.Length > 0 && text[0] == minus))
+                                return;
+                        }
+                        else if (character == dot)
+                        {
+                            // Allow dot for floats
+                            if (numericMode != NumericMode.Float || text.Contains(dot))
+                                return;
+                        }
+                        else
+                        {
+                            // For numeric only accept characters 0 - 9
+                            return;
+                        }
+                    }
+                }
+
+                // For upper only, force everything to caps
+                if (upperOnly)
+                {
+                    character = Char.ToUpper(character);
                 }
 
                 // Accept typed text
@@ -170,17 +257,21 @@ namespace DaggerfallWorkshop.Game.UserInterface
 
             if (lastStringLength != text.Length)
             {
-                this.Size = CalculateCurrentSize();
+                if (!fixedSize)
+                    this.Size = CalculateCurrentSize();
             }
-
         }
 
         public override void Draw()
         {
             base.Draw();
 
-            // Do not draw cursor if readonly
-            if (readOnly)
+            // Final text offset is value * local scale
+            float textOffsetX = textOffset * LocalScale.x;
+            float textOffsetY = textOffset * LocalScale.y;
+
+            // Do not draw cursor if read only or focus-enabled and does not have focus
+            if (readOnly || (UseFocus && !HasFocus()))
                 textCursor.Enabled = false;
             else
                 textCursor.Enabled = true;
@@ -188,7 +279,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
             if (text.Length > 0)
             {
                 Rect rect = Rectangle;
-                font.DrawText(text, new Vector2(rect.x, rect.y), LocalScale, DaggerfallUI.DaggerfallDefaultInputTextColor);
+                font.DrawText(text, new Vector2(rect.x + textOffsetX, rect.y + textOffsetY), LocalScale, DaggerfallUI.DaggerfallDefaultInputTextColor);
             }
             else
             {
@@ -196,7 +287,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
                 if (defaultText.Length > 0)
                 {
                     Rect rect = Rectangle;
-                    font.DrawText(defaultText, new Vector2(rect.x, rect.y), LocalScale, defaultTextColor);
+                    font.DrawText(defaultText, new Vector2(rect.x + textOffsetX, rect.y + textOffsetY), LocalScale, defaultTextColor);
                 }
             }
         }
@@ -226,7 +317,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
             if (cursorPosition > 0)
                 width = GetCharacterWidthToCursor() - font.GlyphSpacing;
 
-            textCursor.Position = new Vector2(width, textCursor.Position.y);
+            textCursor.Position = new Vector2(width + textOffset, textOffset);
             textCursor.BlinkOn();
         }
 
@@ -247,7 +338,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
                 if (!font.HasGlyph(i))
                     continue;
 
-                PixelFont.GlyphInfo glyph = font.GetGlyph(i);
+                DaggerfallFont.GlyphInfo glyph = font.GetGlyph(i);
                 if (glyph.width > width)
                 {
                     width = glyph.width;
@@ -258,7 +349,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
             return new Vector2(totalWidth, font.GlyphHeight);
         }
 
-        //calculate the current size
+        // Calculate the current size
         private Vector2 CalculateCurrentSize()
         {
             int width = 0;
@@ -269,10 +360,10 @@ namespace DaggerfallWorkshop.Game.UserInterface
             {
                 // Invalid ASCII bytes are cast to a space character
                 if (!font.HasGlyph(asciiBytes[i]))
-                    asciiBytes[i] = PixelFont.SpaceASCII;
+                    asciiBytes[i] = DaggerfallFont.SpaceASCII;
 
                 // Calculate total width
-                PixelFont.GlyphInfo glyph = font.GetGlyph(asciiBytes[i]);
+                DaggerfallFont.GlyphInfo glyph = font.GetGlyph(asciiBytes[i]);
                 width += glyph.width + font.GlyphSpacing;
             }
             return new Vector2(width, font.GlyphHeight);

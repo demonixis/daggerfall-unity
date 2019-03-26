@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using DaggerfallConnect.Save;
 using DaggerfallWorkshop;
 using DaggerfallWorkshop.Utility;
+using DaggerfallWorkshop.Utility.AssetInjection;
 using DaggerfallWorkshop.Game.Serialization;
 using DaggerfallWorkshop.Game.UserInterface;
 
@@ -110,7 +111,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             mainPanel.VerticalAlignment = VerticalAlignment.Middle;
             mainPanel.Size = mainPanelSize;
             mainPanel.Outline.Enabled = true;
-            mainPanel.BackgroundColor = mainPanelBackgroundColor;
+            SetBackground(mainPanel, mainPanelBackgroundColor, "mainPanelBackgroundColor");
             NativePanel.Components.Add(mainPanel);
 
             // Prompt
@@ -123,7 +124,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             namePanel.Position = new Vector2(4, 12);
             namePanel.Size = new Vector2(272, 9);
             namePanel.Outline.Enabled = true;
-            namePanel.BackgroundColor = namePanelBackgroundColor;
+            SetBackground(namePanel, namePanelBackgroundColor, "namePanelBackgroundColor");
             mainPanel.Components.Add(namePanel);
 
             // Name input
@@ -143,7 +144,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             savesList.Position = new Vector2(2, 2);
             savesList.Size = new Vector2(91, 129);
             savesList.TextColor = savesListTextColor;
-            savesList.BackgroundColor = savesListBackgroundColor;
+            SetBackground(savesList, savesListBackgroundColor, "savesListBackgroundColor");
             savesList.ShadowPosition = Vector2.zero;
             savesList.RowsDisplayed = 16;
             savesList.OnScroll += SavesList_OnScroll;
@@ -162,7 +163,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             goButton.Position = new Vector2(108, 150);
             goButton.Size = new Vector2(40, 16);
             goButton.Label.ShadowColor = Color.black;
-            goButton.BackgroundColor = saveButtonBackgroundColor;
+            SetBackground(goButton, saveButtonBackgroundColor, "saveButtonBackgroundColor");
             goButton.Outline.Enabled = true;
             goButton.OnMouseClick += SaveLoadEventHandler;
             mainPanel.Components.Add(goButton);
@@ -173,7 +174,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             switchClassicButton.Label.Text = "Classic";
             //switchClassicButton.Label.TextColor = new Color(0.6f, 0.3f, 0.6f);
             switchClassicButton.Label.ShadowColor = Color.black;
-            switchClassicButton.BackgroundColor = new Color(0.2f, 0.2f, 0);
+            SetBackground(switchClassicButton, new Color(0.2f, 0.2f, 0), "switchClassicButtonBackgroundColor");
             switchClassicButton.Outline.Enabled = true;
             switchClassicButton.OnMouseClick += SwitchClassicButton_OnMouseClick;
             mainPanel.Components.Add(switchClassicButton);
@@ -184,7 +185,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             cancelButton.Size = new Vector2(40, 16);
             cancelButton.Label.Text = "Cancel";
             cancelButton.Label.ShadowColor = Color.black;
-            cancelButton.BackgroundColor = cancelButtonBackgroundColor;
+            SetBackground(cancelButton, cancelButtonBackgroundColor, "cancelButtonBackgroundColor");
             cancelButton.Outline.Enabled = true;
             cancelButton.OnMouseClick += CancelButton_OnMouseClick;
             mainPanel.Components.Add(cancelButton);
@@ -193,7 +194,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             screenshotPanel.Position = new Vector2(108, 25);
             screenshotPanel.Size = new Vector2(168, 95);
             screenshotPanel.BackgroundTextureLayout = BackgroundLayout.ScaleToFit;
-            screenshotPanel.BackgroundColor = savesListBackgroundColor;
+            SetBackground(screenshotPanel, savesListBackgroundColor, "screenshotPanelBackgroundColor");
             screenshotPanel.Outline.Enabled = true;
             mainPanel.Components.Add(screenshotPanel);
 
@@ -216,6 +217,14 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             saveFolderLabel.TextColor = saveFolderColor;
             screenshotPanel.Components.Add(saveFolderLabel);
 
+            // Allow clicking folder label to open save folder in explorer
+            // Currently Windows player and editor platforms only
+            if (Application.platform == RuntimePlatform.WindowsPlayer || Application.platform == RuntimePlatform.WindowsEditor)
+            {
+                saveFolderLabel.MouseOverBackgroundColor = Color.blue;
+                saveFolderLabel.OnMouseClick += SaveFolderLabel_OnMouseClick;
+            }
+
             // Time labels
             saveTimeLabel.ShadowPosition = Vector2.zero;
             saveTimeLabel.HorizontalAlignment = HorizontalAlignment.Center;
@@ -232,7 +241,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             deleteSaveButton.HorizontalAlignment = HorizontalAlignment.Center;
             deleteSaveButton.Label.Text = "Delete Save";
             deleteSaveButton.Label.ShadowColor = Color.black;
-            deleteSaveButton.BackgroundColor = namePanelBackgroundColor;
+            SetBackground(deleteSaveButton, namePanelBackgroundColor, "deleteSaveButtonBackgroundColor");
             deleteSaveButton.Outline.Enabled = false;
             deleteSaveButton.OnMouseClick += DeleteSaveButton_OnMouseClick;
             savesPanel.Components.Add(deleteSaveButton);
@@ -242,7 +251,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             switchCharButton.Size = new Vector2(60, 8);
             switchCharButton.Label.Text = "Switch Char";
             switchCharButton.Label.ShadowColor = Color.black;
-            switchCharButton.BackgroundColor = saveButtonBackgroundColor;
+            SetBackground(switchCharButton, saveButtonBackgroundColor, "switchCharButtonBackgroundColor");
             switchCharButton.OnMouseClick += SwitchCharButton_OnMouseClick;
             mainPanel.Components.Add(switchCharButton);
         }
@@ -347,6 +356,13 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             if (key == -1)
                 return;
 
+            // Destroy old background texture
+            if (screenshotPanel.BackgroundTexture)
+            {
+                UnityEngine.Object.Destroy(screenshotPanel.BackgroundTexture);
+                screenshotPanel.BackgroundTexture = null;
+            }
+
             // Get save info and texture
             string path = GameManager.Instance.SaveLoadManager.GetSaveFolder(key);
             SaveInfo_v1 saveInfo = GameManager.Instance.SaveLoadManager.GetSaveInfo(key);
@@ -403,6 +419,21 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             }
         }
 
+        void SetBackground(BaseScreenComponent panel, Color color, string textureName)
+        {
+            Texture2D tex;
+            if (TextureReplacement.TryImportTexture(textureName, out tex))
+                panel.BackgroundTexture = tex;
+            else
+                panel.BackgroundColor = color;
+        }
+
+        void SetBackground(Button button, Color color, string textureName)
+        {
+            if (!TextureReplacement.TryCustomizeButton(ref button, textureName))
+                button.BackgroundColor = color;
+        }
+
         #endregion
 
         #region Event Handlers
@@ -423,7 +454,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 if (key != -1)
                 {
                     DaggerfallMessageBox messageBox = new DaggerfallMessageBox(uiManager, this);
-                    messageBox.SetText(HardStrings.confirmOverwriteSave, "");
+                    messageBox.SetText(new string[] { HardStrings.confirmOverwriteSave, "" });
                     messageBox.AddButton(DaggerfallMessageBox.MessageBoxButtons.Yes);
                     messageBox.AddButton(DaggerfallMessageBox.MessageBoxButtons.No);
                     messageBox.OnButtonClick += ConfirmOverwrite_OnButtonClick;
@@ -475,6 +506,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 UpdateSelectedSaveInfo();
             }
         }
+
         private void SavesList_OnSelectItem()
         {
             saveNameTextBox.Text = savesList.SelectedItem;
@@ -489,7 +521,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
             // Confirmation
             DaggerfallMessageBox messageBox = new DaggerfallMessageBox(uiManager, this);
-            messageBox.SetText(HardStrings.confirmDeleteSave, "");
+            messageBox.SetText(new string[] { HardStrings.confirmDeleteSave, "" });
             messageBox.AddButton(DaggerfallMessageBox.MessageBoxButtons.Delete);
             messageBox.AddButton(DaggerfallMessageBox.MessageBoxButtons.Cancel);
             messageBox.OnButtonClick += ConfirmDelete_OnButtonClick;
@@ -568,6 +600,22 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             UpdateSelectedSaveInfo();
 
             CloseWindow();
+        }
+
+        private void SaveFolderLabel_OnMouseClick(BaseScreenComponent sender, Vector2 position)
+        {
+            // Get save key
+            int key = GameManager.Instance.SaveLoadManager.FindSaveFolderByNames(currentPlayerName, saveNameTextBox.Text);
+            if (key == -1)
+                return;
+
+            // Get save folder
+            string path = GameManager.Instance.SaveLoadManager.GetSaveFolder(key);
+            if (string.IsNullOrEmpty(path))
+                return;
+
+            // Attempt to open path
+            System.Diagnostics.Process.Start(path);
         }
 
         #endregion

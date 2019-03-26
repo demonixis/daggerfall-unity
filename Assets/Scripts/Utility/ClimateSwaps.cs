@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -31,6 +31,10 @@ namespace DaggerfallWorkshop.Utility
         /// <returns>Archive index of new texture.</returns>
         public static int ApplyClimate(int archive, int record, ClimateBases climate, ClimateSeason season)
         {
+            // Don't swap textures for door 3. Same behavior as classic.
+            if (((archive % 100) == 74) && record == 3)
+                return archive;
+
             // Get climate texture info
             ClimateTextureInfo ci = ClimateSwaps.GetClimateTextureInfo(archive);
 
@@ -43,7 +47,6 @@ namespace DaggerfallWorkshop.Utility
             {
                 switch (ci.textureSet)
                 {
-                    case DFLocation.ClimateTextureSet.Interior_TempleInt:
                     case DFLocation.ClimateTextureSet.Interior_MarbleFloors:
                         return archive;
                 }
@@ -192,7 +195,7 @@ namespace DaggerfallWorkshop.Utility
                     break;
 
                 // Interior sets (do not support winter)
-                case DFLocation.ClimateTextureSet.Interior_PalaceInt:
+                case DFLocation.ClimateTextureSet.Interior_CastleInt:
                 case DFLocation.ClimateTextureSet.Interior_CityInt:
                 case DFLocation.ClimateTextureSet.Interior_CryptA:
                 case DFLocation.ClimateTextureSet.Interior_CryptB:
@@ -233,6 +236,14 @@ namespace DaggerfallWorkshop.Utility
         /// <returns>True if exterior window.</returns>
         public static bool IsExteriorWindow(int archive, int record)
         {
+            // Exclude ranges which return a false-positive from this method but actually use normal emission
+            // Currently spells and lights
+            if (archive >= 375 && archive <= 379 ||
+                archive == 210)
+            {
+                return false;
+            }
+
             // Normalise archive index
             archive = (archive - (archive / 100) * 100);
 
@@ -371,37 +382,39 @@ namespace DaggerfallWorkshop.Utility
         public static int GetNatureArchive(ClimateNatureSets natureSet, ClimateSeason climateSeason)
         {
             // Get base set
-            int archive;
+            DFLocation.ClimateTextureSet textureSet;
             switch (natureSet)
             {
                 case ClimateNatureSets.RainForest:
-                    archive = 500;
+                    textureSet = DFLocation.ClimateTextureSet.Nature_RainForest;
                     break;
                 case ClimateNatureSets.SubTropical:
-                    archive = 501;
+                    textureSet = DFLocation.ClimateTextureSet.Nature_SubTropical;
                     break;
                 case ClimateNatureSets.Swamp:
-                    archive = 502;
+                    textureSet = DFLocation.ClimateTextureSet.Nature_Swamp;
                     break;
                 case ClimateNatureSets.Desert:
-                    archive = 503;
+                    textureSet = DFLocation.ClimateTextureSet.Nature_Desert;
                     break;
                 case ClimateNatureSets.TemperateWoodland:
-                    archive = 504;
+                    textureSet = DFLocation.ClimateTextureSet.Nature_TemperateWoodland;
                     break;
                 case ClimateNatureSets.WoodlandHills:
-                    archive = 506;
+                    textureSet = DFLocation.ClimateTextureSet.Nature_WoodlandHills;
                     break;
                 case ClimateNatureSets.HauntedWoodlands:
-                    archive = 508;
+                    textureSet = DFLocation.ClimateTextureSet.Nature_HauntedWoodlands;
                     break;
                 case ClimateNatureSets.Mountains:
-                    archive = 510;
+                    textureSet = DFLocation.ClimateTextureSet.Nature_Mountains;
                     break;
                 default:
-                    archive = 504;
+                    textureSet = DFLocation.ClimateTextureSet.Nature_TemperateWoodland;
                     break;
             }
+
+            var archive = (int) textureSet;
 
             // Winter modifier
             if (climateSeason == ClimateSeason.Winter)

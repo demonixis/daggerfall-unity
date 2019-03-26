@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -13,6 +13,7 @@ using UnityEngine;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 
 namespace DaggerfallWorkshop.Utility
 {
@@ -34,10 +35,16 @@ namespace DaggerfallWorkshop.Utility
     {
         #region Fields
 
+        readonly string stringLiteralWrapper = "\"";
+        readonly string rowSeparator = ",";
+
+        string[] inlineCommentSeparator = new string[] { "//" };
+
         int columnCount;
         int primaryColumnIndex;
         Column[] columns;
         Dictionary<string, int> columnIndexDict;
+        bool hasStringLiteralInSchema = false;
 
         #endregion
 
@@ -65,6 +72,7 @@ namespace DaggerfallWorkshop.Utility
             public string name;
             public List<string> values;
             public Dictionary<string, int> keyIndexDict;
+            public bool isStringLiteral;
         }
 
         #endregion
@@ -85,6 +93,15 @@ namespace DaggerfallWorkshop.Utility
         public Table(string[] lines)
         {
             LoadTable(lines);
+        }
+
+        /// <summary>
+        /// Load constructor.
+        /// </summary>
+        /// <param name="text">Text of data file.</param>
+        public Table(string text)
+        {
+            LoadTable(text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None));
         }
 
         #endregion
@@ -115,6 +132,13 @@ namespace DaggerfallWorkshop.Utility
                 // Skip empty lines
                 if (string.IsNullOrEmpty(text))
                     continue;
+
+                // Exclude anything to right of inline comment
+                string[] parts = text.Split(inlineCommentSeparator, StringSplitOptions.None);
+                if (parts == null || parts.Length < 1)
+                    continue;
+                else
+                    text = parts[0];
 
                 // Parse schema
                 if (text.StartsWith("schema:", StringComparison.InvariantCultureIgnoreCase))
@@ -186,6 +210,27 @@ namespace DaggerfallWorkshop.Utility
         }
 
         /// <summary>
+        /// Gets specified value from column.
+        /// </summary>
+        /// <param name="columnName">Column name.</param>
+        /// <param name="index">Index of row.</param>
+        /// <returns>Value as string.</returns>
+        public string GetValue(string columnName, int index)
+        {
+            // Validate columnName
+            if (!HasColumn(columnName))
+                throw new Exception(string.Format("GetValue() columnName '{0}' does not exist.", columnName));
+
+            // Validate index
+            if (index < 0 || index > RowCount)
+                throw new Exception(string.Format("GetValue() index '{0}' does not exist.", index));
+
+            int columnIndex = GetColumnIndex(columnName);
+
+            return columns[columnIndex].values[index];
+        }
+
+        /// <summary>
         /// Sets specified value in column.
         /// </summary>
         /// <param name="columnName">Column name.</param>
@@ -206,6 +251,21 @@ namespace DaggerfallWorkshop.Utility
 
             columns[columnIndex].values[valueIndex] = value;
         }
+
+        public string GetKeyForValue(string columnName, string value)
+        {
+            // Validate columnName
+            if (!HasColumn(columnName))
+                throw new Exception(string.Format("GetKeyForValue() columnName '{0}' does not exist.", columnName));
+
+            int columnIndex = columnIndexDict[columnName];
+
+            for (int i = 0; i < RowCount; i++)
+                if (columns[columnIndex].values[i] == value)
+                    return columns[primaryColumnIndex].values[i];
+            return null;
+        }
+
 
         /// <summary>
         /// Gets column index by name.
@@ -359,12 +419,28 @@ namespace DaggerfallWorkshop.Utility
                     name = name.Substring(1, name.Length - 1);
                 }
 
+                // Check if string literal
+                // Primary key can become a string literal provided * comes before $
+                // For example - schema: *$key, value
+                // A key literal must also be wrapped in quotes, e.g. "key123"
+                bool isStringLiteral = false;
+                if (name.StartsWith("$"))
+                {
+                    isStringLiteral = true;
+                    name = name.Substring(1, name.Length - 1);
+                }
+
                 // Create new column
                 Column column = new Column();
                 column.name = name;
                 column.values = new List<string>();
                 column.keyIndexDict = new Dictionary<string, int>();
+                column.isStringLiteral = isStringLiteral;
                 columns[i] = column;
+
+                // Tag this schema as having a string literal
+                if (column.isStringLiteral)
+                    hasStringLiteralInSchema = true;
 
                 // Add column to index dict
                 columnIndexDict.Add(name, i);
@@ -375,12 +451,126 @@ namespace DaggerfallWorkshop.Utility
                 throw new Exception("Table must tag at least one column as primary using *.");
         }
 
+        // Special handling to split row into values with support for string literals in schema
+        string[] SplitLine(string text, int lineNumber)
+        {
+            int position = 0;
+            List<string> substrings = new List<string>();
+
+            // Break line into rows based on schema
+            for (int row = 0; row < columnCount; row++)
+            {
+                string result = string.Empty;
+
+                if (columns[row].isStringLiteral)
+                {
+                    // Scan for first literal wrapper character
+                    bool openedLiteral = false;
+                    while (position < text.Length)
+                    {
+                        if (text.Substring(position, 1) == stringLiteralWrapper)
+                        {
+                            openedLiteral = true;
+                            position++;
+                            break;
+                        }
+                        position++;
+                    }
+
+                    // Accept reaching end of line without finding opening literal
+                    // This can happen when row ends on separator indicating empty next value
+                    if (openedLiteral)
+                    {
+                        // Scan to closing literal wrapper character
+                        int literalStart = position;
+                        bool closedLiteral = false;
+                        while (position < text.Length)
+                        {
+                            if (text.Substring(position, 1) == stringLiteralWrapper)
+                            {
+                                result = text.Substring(literalStart, position - literalStart);
+                                closedLiteral = true;
+                                position++;
+                                break;
+                            }
+                            position++;
+                        }
+
+                        if (closedLiteral)
+                        {
+                            // Scan to next separator or end of line text
+                            while (position < text.Length)
+                            {
+                                if (text.Substring(position, 1) == rowSeparator)
+                                {
+                                    position++;
+                                    break;
+                                }
+                                position++;
+                            }
+                        }
+                        else
+                        {
+                            // Must close with literal wrapper - log line contents to debug
+                            Debug.LogErrorFormat("Table read error on line '{0}'. Expected closing string literal and reached end of line instead. Ensure string literals are enclosed {1}like so{1}", text, stringLiteralWrapper);
+                        }
+                    }
+                }
+                else
+                {
+                    // Scan to next separator or end of line text
+                    int dataStart = position;
+                    while (position < text.Length)
+                    {
+                        if (text.Substring(position, 1) == rowSeparator)
+                        {
+                            position++;
+                            break;
+                        }
+                        position++;
+                    }
+
+                    // Read text
+                    int length = position - dataStart;
+                    if (dataStart + length < text.Length)
+                        result = text.Substring(dataStart, length - 1);      // More data to read, must remove trailing seperator
+                    else if (dataStart + length == text.Length)
+                        result = text.Substring(dataStart, length);          // Reached end of line exactly, no separator to remove
+                    else
+                        result = string.Empty;                               // Overflow, can happen when line terminates with separator indicating empty next value
+
+                    // Handle edge case where separator is included with final second-last value when final value is empty
+                    if (result.EndsWith(rowSeparator))
+                        result = result.Substring(0, result.Length - 1);
+                }
+
+                // Trim non-literal data elements
+                if (!columns[row].isStringLiteral)
+                    result = result.Trim();
+
+                substrings.Add(result);
+            }
+
+            return substrings.ToArray();
+        }
+
         void LoadRow(string text, int lineNumber)
         {
-            // Split line by commas
-            string[] parts = text.Split(',');
-            if (parts.Length != columnCount)
-                throw new Exception(string.Format("Row on line {0} does not match schema.", lineNumber));
+            // Use custom split for schema containing string literals
+            // Otherwise use string.Split() as it will be faster overall
+            string[] parts;
+            if (hasStringLiteralInSchema)
+            {
+                // Split line with one or more string literals
+                parts = SplitLine(text, lineNumber); 
+            }
+            else
+            {
+                // Split line by commas
+                parts = text.Split(','); 
+                if (parts.Length != columnCount)
+                    throw new Exception(string.Format("Row on line {0} does not match schema. \"{1}\"", lineNumber, text));
+            }
 
             // Add values to columns
             for (int i = 0; i < parts.Length; i++)
@@ -392,7 +582,14 @@ namespace DaggerfallWorkshop.Utility
                 // Link primary key value to current index
                 if (i == primaryColumnIndex)
                 {
-                    columns[i].keyIndexDict.Add(value, columns[i].values.Count - 1);
+                    if (columns[i].keyIndexDict.ContainsKey(value))
+                    {
+                        Debug.LogErrorFormat("Duplicate key found: {0}", value);
+                    }
+                    else
+                    {
+                        columns[i].keyIndexDict.Add(value, columns[i].values.Count - 1);
+                    }
                 }
             }
         }

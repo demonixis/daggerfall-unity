@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -11,19 +11,11 @@
 
 using UnityEngine;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 
 
 namespace DaggerfallWorkshop.Game.Utility.ModSupport
 {
-    public interface IModController
-    {
-        string ModName { get;}
-        bool IsDisableable { get;}
-        void ShowControllerUIWindow();
-    }
-
     //loaded asset - used for lookups w/ mods
     public struct LoadedAsset
     {
@@ -42,21 +34,18 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
     [System.Serializable]
     public class ModInfo
     {
-        public string ModFileName;      //Must be lowercase
         public string ModTitle;         //displayed in game
         public string ModVersion;
         public string ModAuthor;
         public string ContactInfo;
-        public string DFUnity_Verion;
+        public string DFUnity_Version;
         public string ModDescription;
+        public string GUID = "invalid";
         public List<string> Files;      //list of assets to add to mod (only used during creation)
 
         public ModInfo()
         {
-            if(Application.isEditor)
-                Files = new List<string>();
-
-            ModFileName         = "";
+            Files = new List<string>();
         }
     }
 
@@ -125,5 +114,25 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         }
     }
 
+    /// <summary>
+    /// Takes part of load/save logic.
+    /// </summary>
+    public interface IHasModSaveData
+    {
+        Type SaveDataType { get; }                      // Type of save data object.
+        object NewSaveData();                           // Make empty/default save data.
+        object GetSaveData();                           // Gets data to be serialized or null.
+        void RestoreSaveData(object saveData);          // Apply deserialized data.
+    }
 
+    //used by mod builder window
+    public enum ModCompressionOptions
+    {
+        LZ4=0,
+        LZMA=1,
+        Uncompressed=2,
+    }
+
+    public delegate void DFModMessageReceiver(string message, object data, DFModMessageCallback callBack);
+    public delegate void DFModMessageCallback(string message, object data);
 }

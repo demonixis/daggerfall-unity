@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -17,28 +17,28 @@ using DaggerfallWorkshop.Utility;
 namespace DaggerfallWorkshop
 {
     /// <summary>
-    /// Stores information related to exterior city blocks (RMB blocks).
-    /// Should be attached to city block game objects.
-    /// Currently storing building information for testing.
-    /// May be expanded later to track additional block-specific information.
+    /// This is back to a placeholder component for now.
+    /// Building lookup has been moved to DaggerfallLocation object by way of BuildingDirectory.
     /// </summary>
     [RequireComponent(typeof(DaggerfallStaticDoors))]
     public class DaggerfallRMBBlock : MonoBehaviour
     {
-        public string Name;
-        public int BuildingCount;
-        public RMBLayout.BuildingSummary[] Buildings;
+        //public string Name;
+        //public int BuildingCount;
+        //public int LayoutX = -1;
+        //public int LayoutY = -1;
+        //public BuildingSummary[] Buildings;
 
-        /// <summary>
-        /// Sets block information during scene layout.
-        /// </summary>
-        /// <param name="blockData">DFBlock data.</param>
-        public void SetBlockData(DFBlock blockData)
-        {
-            // Create block summary
-            Name = blockData.Name;
-            BuildingCount = blockData.RmbBlock.SubRecords.Length;
-            Buildings = RMBLayout.GetBuildingData(blockData);
-        }
+        ///// <summary>
+        ///// Sets block building information during scene layout.
+        ///// </summary>
+        ///// <param name="blockData">DFBlock data.</param>
+        //public void SetBlockBuildingData(DFBlock blockData)
+        //{
+        //    // Create block summary
+        //    Name = blockData.Name;
+        //    BuildingCount = blockData.RmbBlock.SubRecords.Length;
+        //    Buildings = RMBLayout.GetBuildingData(blockData);
+        //}
     }
 }

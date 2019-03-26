@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -14,8 +14,6 @@
 
 using UnityEngine;
 using System;
-using System.Collections;
-using System.Collections.Generic;
 using DaggerfallConnect.Arena2;
 using DaggerfallConnect.Utility;
 using DaggerfallWorkshop.Game;
@@ -31,16 +29,19 @@ namespace DaggerfallWorkshop.Utility
     {
         #region Fields
 
-        const float verticalThreshold = 800f;
+        public const int floatingOriginVersion = 3;
+
+        const float verticalThreshold = 500f;
 
         public StreamingWorld StreamingWorld;
         public GameObject Player;
         public static FloatingOrigin instance;
 
         PlayerMotor playerMotor = null;
+        AcrobatMotor acrobatMotor = null;
+        PlayerGroundMotor groundMotor = null;
         DFPosition lastMapPixel;
         DFPosition currentMapPixel;
-        //bool forceFloatingOriginUpdate = false;
 
         #endregion
 
@@ -74,6 +75,14 @@ namespace DaggerfallWorkshop.Utility
             playerMotor = Player.GetComponent<PlayerMotor>();
             if (!playerMotor)
                 throw new Exception("Player object does not have a PlayerMotor.");
+
+            acrobatMotor = Player.GetComponent<AcrobatMotor>();
+            if (!acrobatMotor)
+                throw new Exception("Player object does not have an AcrobatMotor.");
+
+            groundMotor = Player.GetComponent<PlayerGroundMotor>();
+            if (!groundMotor)
+                throw new Exception("Player object does not have a PlayerGroundMotor.");
         }
 
         void Start()
@@ -92,26 +101,26 @@ namespace DaggerfallWorkshop.Utility
             if (StreamingWorld.IsInit)
                 return;
 
-            // Update world position when appropriate
-            //if (CheckPosition() || forceFloatingOriginUpdate)
-            if (CheckPosition())
+            // Get Y change
+            float yChange = 0;
+            if (playerMotor.transform.position.y < -verticalThreshold ||
+                playerMotor.transform.position.y > verticalThreshold)
             {
-                // Get X-Z offset
-                float xChange = (currentMapPixel.X - lastMapPixel.X) * (MapsFile.WorldMapTerrainDim * MeshReader.GlobalScale);
-                float zChange = (currentMapPixel.Y - lastMapPixel.Y) * (MapsFile.WorldMapTerrainDim * MeshReader.GlobalScale);
+                yChange = -playerMotor.transform.position.y;
+            }
 
-                // Get Y offset
-                float yChange = 0;
-                //if (playerMotor.transform.position.y < -verticalThreshold ||
-                //    playerMotor.transform.position.y > verticalThreshold ||
-                //    forceFloatingOriginUpdate)
-                //{
-                //    yChange = -playerMotor.transform.position.y;
-                //}
+            // Get X-Z (map pixel) change
+            float xChange = 0, zChange = 0;
+            if (CheckMapPosition())
+            {
+                xChange = (currentMapPixel.X - lastMapPixel.X) * (MapsFile.WorldMapTerrainDim * MeshReader.GlobalScale);
+                zChange = (currentMapPixel.Y - lastMapPixel.Y) * (MapsFile.WorldMapTerrainDim * MeshReader.GlobalScale);
+            }
 
-                // Create offset
-                Vector3 offset = new Vector3(-xChange, yChange, zChange);
-
+            // Create offset
+            Vector3 offset = new Vector3(-xChange, yChange, zChange);
+            if (offset != Vector3.zero)
+            {
                 // Offset player
                 OffsetPlayerController(offset);
 
@@ -120,9 +129,6 @@ namespace DaggerfallWorkshop.Utility
 
                 // Raise event
                 RaiseOnPositionUpdateEvent(offset);
-
-                // Lower update flags
-                //forceFloatingOriginUpdate = false;
             }
         }
 
@@ -144,13 +150,13 @@ namespace DaggerfallWorkshop.Utility
 
         void Initialize()
         {
-            playerMotor.ClearActivePlatform();
+            groundMotor.ClearActivePlatform();
             DFPosition mapPixel = StreamingWorld.LocalPlayerGPS.CurrentMapPixel;
             currentMapPixel = mapPixel;
             lastMapPixel = mapPixel;
         }
 
-        bool CheckPosition()
+        bool CheckMapPosition()
         {
             DFPosition mapPixel = StreamingWorld.LocalPlayerGPS.CurrentMapPixel;
             if (mapPixel.X != currentMapPixel.X ||
@@ -166,15 +172,15 @@ namespace DaggerfallWorkshop.Utility
 
         void OffsetPlayerController(Vector3 offset)
         {
-            playerMotor.ClearActivePlatform();
-            playerMotor.AdjustFallStart(offset.y);
+            groundMotor.ClearActivePlatform();
+            acrobatMotor.AdjustFallStart(offset.y);
             playerMotor.transform.position += offset;
             StreamingWorld.OffsetWorldCompensation(offset, true);
         }
 
         void OffsetChildren(GameObject parent, Vector3 offset)
         {
-            foreach(Transform child in parent.transform)
+            foreach (Transform child in parent.transform)
             {
                 child.position += offset;
             }
@@ -200,7 +206,6 @@ namespace DaggerfallWorkshop.Utility
         private void StreamingWorld_OnInitWorld()
         {
             Initialize();
-            //forceFloatingOriginUpdate = true;
         }
 
         #endregion

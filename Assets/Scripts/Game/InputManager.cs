@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -17,6 +17,7 @@ using System.Text;
 using System.IO;
 using FullSerializer;
 using DaggerfallWorkshop.Game.Serialization;
+using System.Linq;
 
 namespace DaggerfallWorkshop.Game
 {
@@ -27,12 +28,13 @@ namespace DaggerfallWorkshop.Game
     {
         #region Fields
 
+        public const float minAcceleration = 1.0f;
+        public const float maxAcceleration = 10.0f;
+
         const string keyBindsFilename = "KeyBinds.txt";
 
-        const float acceleration = 3f;
-        const float friction = 4f;
-        const float deadZone = 0.1f;
-        const float frameSkipTotal = 5;
+        const float deadZone = 0.05f;
+        const float inputWaitTotal = 0.0833f;
 
         KeyCode[] reservedKeys = new KeyCode[] { KeyCode.Escape, KeyCode.BackQuote };
         Dictionary<KeyCode, Actions> actionKeyDict = new Dictionary<KeyCode, Actions>();
@@ -40,7 +42,7 @@ namespace DaggerfallWorkshop.Game
         List<Actions> previousActions = new List<Actions>();
         bool isPaused;
         bool wasPaused;
-        int frameSkipCount;
+        float inputWaitTimer;
         float horizontal;
         float vertical;
         float lookX;
@@ -53,6 +55,7 @@ namespace DaggerfallWorkshop.Game
         bool negHorizontalImpulse;
         bool posVerticalImpulse;
         bool negVerticalImpulse;
+        float acceleration = 5.0f;
 
         #endregion
 
@@ -137,10 +140,10 @@ namespace DaggerfallWorkshop.Game
 
             MoveForwards,
             MoveBackwards,
-            MoveLeft,
-            MoveRight,
             TurnLeft,
+            MoveLeft,
             TurnRight,
+            MoveRight,
 
             FloatUp,
             FloatDown,
@@ -227,6 +230,9 @@ namespace DaggerfallWorkshop.Game
 
         void Start()
         {
+            // Read acceleration/deceleration setting
+            acceleration = DaggerfallUnity.Settings.MoveSpeedAcceleration;
+
             try
             {
                 // Load a keybind file if possible
@@ -270,11 +276,11 @@ namespace DaggerfallWorkshop.Game
             // Do nothing if paused
             if (isPaused)
             {
-                frameSkipCount = 0;
+                inputWaitTimer = 0f;
                 wasPaused = true;
 
                 // Allow quickload during death
-                if (GameManager.Instance.PlayerDeath.DeathInProgress)
+                if (GameManager.Instance.PlayerObject && GameManager.Instance.PlayerDeath.DeathInProgress)
                 {
                     KeyCode quickLoadBinding = GetBinding(Actions.QuickLoad);
                     if (Input.GetKey(quickLoadBinding))
@@ -286,13 +292,14 @@ namespace DaggerfallWorkshop.Game
                 return;
             }
 
-            // Skip some frame post-pause
+            // Skip some time post-pause
             // This ensures GUI actions do not "fall-through" to main world
             // as closing GUI and picking up next input all happen same-frame
             // This also helps prevent fall-through of GUI mouse movements to
             // same-frame mouse-look actions
-            if (wasPaused && frameSkipCount++ < frameSkipTotal)
+            if (wasPaused && inputWaitTimer < inputWaitTotal)
             {
+                inputWaitTimer += Time.deltaTime;
                 return;
             }
 
@@ -335,6 +342,14 @@ namespace DaggerfallWorkshop.Game
             mouseY = 0;
             lookX = 0;
             lookY = 0;
+        }
+
+        /// <summary>
+        /// Adds an action
+        /// </summary>
+        public void AddAction(Actions action)
+        {
+            currentActions.Add(action);
         }
 
         /// <summary>
@@ -397,13 +412,121 @@ namespace DaggerfallWorkshop.Game
             return keyCodes.ToArray();
         }
 
+        // Bind a KeyCode to an action
+        public void SetBinding(KeyCode code, Actions action)
+        {
+            // Not allowing multi-bind at this time as the front-end doesn't support it
+            ClearBinding(action);
+
+            if (!actionKeyDict.ContainsKey(code))
+            {
+                actionKeyDict.Add(code, action);
+            }
+            else
+            {
+                actionKeyDict.Remove(code);
+                actionKeyDict.Add(code, action);
+            }
+        }
+
+        // Unbind a KeyCode or action
+        public void ClearBinding(KeyCode code)
+        {
+            if (actionKeyDict.ContainsKey(code))
+            {
+                actionKeyDict.Remove(code);
+            }
+        }
+
+        public void ClearBinding(Actions action)
+        {
+            foreach (var binding in actionKeyDict.Where(kvp => kvp.Value == action).ToList())
+            {
+                actionKeyDict.Remove(binding.Key);
+            }
+        }
+
+        // Save keybindings
+        public void SaveKeyBinds()
+        {
+            string path = GetKeyBindsSavePath();
+
+            KeyBindData_v1 keyBindsData = new KeyBindData_v1();
+            keyBindsData.actionKeyBinds = actionKeyDict;
+            string json = SaveLoadManager.Serialize(keyBindsData.GetType(), keyBindsData);
+            File.WriteAllText(path, json);
+            RaiseSavedKeyBindsEvent();
+        }
+
+        // Set keybindings to defaults
+        public void ResetDefaults()
+        {
+            actionKeyDict.Clear();
+
+            SetBinding(KeyCode.Escape, Actions.Escape);
+            SetBinding(KeyCode.BackQuote, Actions.ToggleConsole);
+
+            SetBinding(KeyCode.W, Actions.MoveForwards);
+            SetBinding(KeyCode.S, Actions.MoveBackwards);
+            SetBinding(KeyCode.A, Actions.MoveLeft);
+            SetBinding(KeyCode.D, Actions.MoveRight);
+            SetBinding(KeyCode.LeftArrow, Actions.TurnLeft);
+            SetBinding(KeyCode.RightArrow, Actions.TurnRight);
+
+            SetBinding(KeyCode.PageUp, Actions.FloatUp);
+            SetBinding(KeyCode.PageDown, Actions.FloatDown);
+            SetBinding(KeyCode.Space, Actions.Jump);
+            SetBinding(KeyCode.C, Actions.Crouch);
+            SetBinding(KeyCode.LeftControl, Actions.Slide);
+            SetBinding(KeyCode.RightControl, Actions.Slide);
+            SetBinding(KeyCode.LeftShift, Actions.Run);
+            SetBinding(KeyCode.RightShift, Actions.Run);
+
+            SetBinding(KeyCode.R, Actions.Rest);
+            SetBinding(KeyCode.T, Actions.Transport);
+            SetBinding(KeyCode.F1, Actions.StealMode);
+            SetBinding(KeyCode.F2, Actions.GrabMode);
+            SetBinding(KeyCode.F3, Actions.InfoMode);
+            SetBinding(KeyCode.F4, Actions.TalkMode);
+
+            SetBinding(KeyCode.Backspace, Actions.CastSpell);
+            SetBinding(KeyCode.Q, Actions.RecastSpell);
+            SetBinding(KeyCode.E, Actions.AbortSpell);
+            SetBinding(KeyCode.U, Actions.UseMagicItem);
+
+            SetBinding(KeyCode.Z, Actions.ReadyWeapon);
+            SetBinding(KeyCode.Mouse1, Actions.SwingWeapon);
+            SetBinding(KeyCode.H, Actions.SwitchHand);
+
+            SetBinding(KeyCode.I, Actions.Status);
+            SetBinding(KeyCode.F5, Actions.CharacterSheet);
+            SetBinding(KeyCode.F6, Actions.Inventory);
+
+            SetBinding(KeyCode.Mouse0, Actions.ActivateCenterObject);
+            SetBinding(KeyCode.Return, Actions.ActivateCursor);
+
+            SetBinding(KeyCode.Insert, Actions.LookUp);
+            SetBinding(KeyCode.Delete, Actions.LookDown);
+            SetBinding(KeyCode.Home, Actions.CenterView);
+            SetBinding(KeyCode.LeftAlt, Actions.Sneak);
+            SetBinding(KeyCode.RightAlt, Actions.Sneak);
+
+            SetBinding(KeyCode.L, Actions.LogBook);
+            SetBinding(KeyCode.N, Actions.NoteBook);
+            SetBinding(KeyCode.M, Actions.AutoMap);
+            SetBinding(KeyCode.V, Actions.TravelMap);
+
+            SetBinding(KeyCode.F9, Actions.QuickSave);
+            SetBinding(KeyCode.F12, Actions.QuickLoad);
+        }
+
         #endregion
 
         #region Public Static Methods
 
         public static bool FindSingleton(out InputManager singletonOut)
         {
-            singletonOut = GameObject.FindObjectOfType(typeof(InputManager)) as InputManager;
+            singletonOut = GameObject.FindObjectOfType<InputManager>();
             if (singletonOut == null)
             {
                 DaggerfallUnity.LogMessage("Could not locate InputManager GameObject instance in scene!", true);
@@ -431,8 +554,19 @@ namespace DaggerfallWorkshop.Game
             }
         }
 
+        // Sets KeyCode binding only if action is missing
+        // This is to ensure default actions are restored if missing
+        // and to push out new actions to existing keybind files
+        private void TestSetBinding(KeyCode code, Actions action)
+        {
+            if (!actionKeyDict.ContainsValue(action))
+            {
+                SetBinding(code, action);
+            }
+        }
+
         // Deploys default values if action missing from loaded keybinds
-        void SetupDefaults()
+        private void SetupDefaults()
         {
             TestSetBinding(KeyCode.Escape, Actions.Escape);
             TestSetBinding(KeyCode.BackQuote, Actions.ToggleConsole);
@@ -491,44 +625,15 @@ namespace DaggerfallWorkshop.Game
             TestSetBinding(KeyCode.F12, Actions.QuickLoad);
         }
 
-        // Bind a KeyCode to an action
-        void SetBinding(KeyCode code, Actions action)
-        {
-            if (!actionKeyDict.ContainsKey(code))
-            {
-                actionKeyDict.Add(code, action);
-            }
-            else
-            {
-                actionKeyDict.Remove(code);
-                actionKeyDict.Add(code, action);
-            }
-        }
-
-        // Unbind a KeyCode from an action
-        void ClearBinding(KeyCode code)
-        {
-            if (actionKeyDict.ContainsKey(code))
-            {
-                actionKeyDict.Remove(code);
-            }
-        }
-
-        // Sets KeyCode binding only if action is missing
-        // This is to ensure default actions are restored if missing
-        // and to push out new actions to existing keybind files
-        void TestSetBinding(KeyCode code, Actions action)
-        {
-            if (!actionKeyDict.ContainsValue(action))
-            {
-                SetBinding(code, action);
-            }
-        }
-
         // Apply force to horizontal axis
         void ApplyHorizontalForce(float scale)
         {
-            horizontal = Mathf.Clamp(horizontal + (acceleration * scale) * Time.deltaTime, -1, 1);
+            // Use acceleration setting or "just go" at max value
+            if (acceleration < maxAcceleration)
+                horizontal = Mathf.Clamp(horizontal + (acceleration * scale) * Time.deltaTime, -1, 1);
+            else
+                horizontal = scale;
+
             if (scale < 0)
                 negHorizontalImpulse = true;
             else if (scale > 0)
@@ -538,7 +643,12 @@ namespace DaggerfallWorkshop.Game
         // Apply force to vertical axis
         void ApplyVerticalForce(float scale)
         {
-            vertical = Mathf.Clamp(vertical + (acceleration * scale) * Time.deltaTime, -1, 1);
+            // Use acceleration setting or "just go" at max value
+            if (acceleration < maxAcceleration)
+                vertical = Mathf.Clamp(vertical + (acceleration * scale) * Time.deltaTime, -1, 1);
+            else
+                vertical = scale;
+
             if (scale < 0)
                 negVerticalImpulse = true;
             else if (scale > 0)
@@ -548,15 +658,31 @@ namespace DaggerfallWorkshop.Game
         // Apply friction to decelerate inactive movement impulses towards 0
         void ApplyFriction()
         {
-            if (!posVerticalImpulse && vertical > 0)
-                vertical = Mathf.Clamp(vertical - friction * Time.deltaTime, 0, vertical);
-            if (!negVerticalImpulse && vertical < 0)
-                vertical = Mathf.Clamp(vertical + friction * Time.deltaTime, vertical, 0);
+            // Use acceleration setting or "just stop" at max value
+            if (acceleration < maxAcceleration)
+            {
+                if (!posVerticalImpulse && vertical > 0)
+                    vertical = Mathf.Clamp(vertical - acceleration * Time.deltaTime, 0, vertical);
+                if (!negVerticalImpulse && vertical < 0)
+                    vertical = Mathf.Clamp(vertical + acceleration * Time.deltaTime, vertical, 0);
 
-            if (!posHorizontalImpulse && horizontal > 0)
-                horizontal = Mathf.Clamp(horizontal - friction * Time.deltaTime, 0, horizontal);
-            if (!negHorizontalImpulse && horizontal < 0)
-                horizontal = Mathf.Clamp(horizontal + friction * Time.deltaTime, horizontal, 0);
+                if (!posHorizontalImpulse && horizontal > 0)
+                    horizontal = Mathf.Clamp(horizontal - acceleration * Time.deltaTime, 0, horizontal);
+                if (!negHorizontalImpulse && horizontal < 0)
+                    horizontal = Mathf.Clamp(horizontal + acceleration * Time.deltaTime, horizontal, 0);
+            }
+            else
+            {
+                if (!posVerticalImpulse && vertical > 0)
+                    vertical = 0;
+                if (!negVerticalImpulse && vertical < 0)
+                    vertical = 0;
+
+                if (!posHorizontalImpulse && horizontal > 0)
+                    horizontal = 0;
+                if (!negHorizontalImpulse && horizontal < 0)
+                    horizontal = 0;
+            }
         }
 
         // Updates look axes based on supported input
@@ -618,17 +744,6 @@ namespace DaggerfallWorkshop.Game
                 return true;
 
             return false;
-        }
-
-        void SaveKeyBinds()
-        {
-            string path = GetKeyBindsSavePath();
-
-            KeyBindData_v1 keyBindsData = new KeyBindData_v1();
-            keyBindsData.actionKeyBinds = actionKeyDict;
-            string json = SaveLoadManager.Serialize(keyBindsData.GetType(), keyBindsData);
-            File.WriteAllText(path, json);
-            RaiseSavedKeyBindsEvent();
         }
 
         void LoadKeyBinds()

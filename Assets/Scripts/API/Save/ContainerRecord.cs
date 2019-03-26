@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -9,12 +9,7 @@
 // Notes:
 //
 
-using System;
-using System.Text;
 using System.IO;
-using System.Collections;
-using System.Collections.Generic;
-using DaggerfallConnect.Utility;
 
 namespace DaggerfallConnect.Save
 {
@@ -39,7 +34,7 @@ namespace DaggerfallConnect.Save
         }
 
         /// <summary>
-        /// Experimental. Returns true if this is a wagon.
+        /// Returns true if this is a wagon.
         /// </summary>
         public bool IsWagon
         {
@@ -53,7 +48,6 @@ namespace DaggerfallConnect.Save
         /// <summary>
         /// Container records have a variable number of unknown bytes.
         /// Can often be just a single byte, so does not seem to be reliably useful.
-        /// First byte seems to indicate wagon container if value is 150.
         /// </summary>
         public struct ContainerRecordData
         {
@@ -98,12 +92,7 @@ namespace DaggerfallConnect.Save
 
         bool WagonCheck()
         {
-            // Must have data
-            if (parsedData.unknown == null || parsedData.unknown.Length == 0)
-                return false;
-
-            // If first byte is 150, this seems to indicate wagon container
-            if (parsedData.unknown[0] == 150)
+            if (recordRoot.SpriteIndex == 4)
                 return true;
             else
                 return false;

@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -10,11 +10,8 @@
 //
 
 using System;
-using System.Text;
 using System.IO;
-using System.Collections;
 using System.Collections.Generic;
-using DaggerfallConnect.Utility;
 
 namespace DaggerfallConnect.Save
 {
@@ -27,7 +24,7 @@ namespace DaggerfallConnect.Save
 
         // Constants
         public const int RecordRootLength = 71;
-        public const int DungeonDataLengthMultiplier = 39;
+        public const int LightDataLengthMultiplier = 39;
 
         // Source data from file stream
         protected long streamPosition;
@@ -160,10 +157,10 @@ namespace DaggerfallConnect.Save
             if (length <= 0)
                 return;
 
-            // Peek record type and adjust for dungeon size
+            // Peek record type and adjust for light size
             recordType = SaveTree.PeekRecordType(reader);
-            if (recordType == RecordTypes.DungeonInformation)
-                streamLength *= DungeonDataLengthMultiplier;
+            if (recordType == RecordTypes.Light)
+                streamLength *= LightDataLengthMultiplier;
 
             // Read raw record data
             streamData = reader.ReadBytes(streamLength);
@@ -222,24 +219,52 @@ namespace DaggerfallConnect.Save
                 return;
             }
 
+            // Direction
+            reader.BaseStream.Position = 1;
+            recordRoot.Pitch = reader.ReadInt16();
+            recordRoot.Yaw = reader.ReadInt16();
+            recordRoot.Roll = reader.ReadInt16();
+
             // Position
-            reader.BaseStream.Position = 6;
             recordRoot.Position = SaveTree.ReadPosition(reader);
 
+            // 3d View Picture
+            reader.BaseStream.Position = 27;
+            recordRoot.SpriteIndex = reader.ReadUInt16();
+
+            // Inventory Picture
+            recordRoot.Picture2 = reader.ReadUInt16();
+
             // RecordID
-            reader.BaseStream.Position = 30;
             recordRoot.RecordID = reader.ReadUInt32();
 
             // QuestID
-            reader.BaseStream.Position = 37;
+            reader.BaseStream.Position = 38;
             recordRoot.QuestID = reader.ReadByte();
 
             // ParentRecordID
-            reader.BaseStream.Position = 38;
             recordRoot.ParentRecordID = reader.ReadUInt32();
 
+            // Time
+            reader.BaseStream.Position = 43;
+            recordRoot.Time = reader.ReadUInt32();
+
+            // ItemObject
+            recordRoot.ItemObject = reader.ReadUInt32();
+
+            // QuestObjectID
+            recordRoot.QuestObjectID = reader.ReadUInt32();
+
+            // NextObject
+            recordRoot.NextObject = reader.ReadUInt32();
+
+            // ChildObject
+            recordRoot.ChildObject = reader.ReadUInt32();
+
+            // SublistHead
+            recordRoot.SublistHead = reader.ReadUInt32();
+
             // ParentRecordType
-            reader.BaseStream.Position = 66;
             recordRoot.ParentRecordType = (RecordTypes)reader.ReadInt32();
 
             reader.Close();

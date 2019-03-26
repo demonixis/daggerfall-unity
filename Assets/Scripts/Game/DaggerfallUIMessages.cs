@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -31,8 +31,6 @@ namespace DaggerfallWorkshop.Game
 
         // "Book Reader" window messages
         public const string dfuiOpenBookReaderWindow = "dfuiOpenBookReaderWindow";
-        public const string dfuiBookReaderPreviousPage = "dfuiBookReaderPreviousPage";
-        public const string dfuiBookReaderNextPage = "dfuiBookReaderNextPage";
 
         // "VID Player" window messages
         public const string dfuiOpenVIDPlayerWindow = "dfuiOpenVIDPlayerWindow";
@@ -46,11 +44,26 @@ namespace DaggerfallWorkshop.Game
         // "In game windows" window messages
         public const string dfuiOpenCharacterSheetWindow = "dfuiOpenCharacterSheetWindow";
         public const string dfuiOpenInventoryWindow = "dfuiOpenInventoryWindow";
+        public const string dfuiOpenControlsWindow = "dfuiOpenControlsWindow";
+        public const string dfuiOpenJoystickControlsWindow = "dfuiOpenJoystickControlsWindow";
+        public const string dfuiOpenMouseControlsWindow = "dfuiOpenMouseControlsWindow";
         public const string dfuiOpenTravelMapWindow = "dfuiOpenTravelMapWindow";
         public const string dfuiOpenRestWindow = "dfuiOpenRestWindow";
+        public const string dfuiOpenTransportWindow = "dfuiOpenTransportWindow";
         public const string dfuiOpenAutomap = "dfuiOpenAutomap";
+        public const string dfuiOpenQuestJournalWindow = "dfuiOpenQuestJournalWindow";
+        public const string dfuiOpenNotebookWindow = "dfuiOpenNotebookWindow";
+        public const string dfuiOpenPlayerHistoryWindow = "dfuiOpenPlayerHistoryWindow";
+        public const string dfuiOpenSpellBookWindow = "dfuiOpenSpellBookWindow";
+        public const string dfuiOpenSpellMakerWindow = "dfuiOpenSpellMakerWindow";
+        public const string dfuiOpenUseMagicItemWindow = "dfuiOpenUseMagicItemWindow";
+
+        // Status info messages
+        public const string dfuiStatusInfo = "dfuiStatusInfo";
+
+        // Court messages
+        public const string dfuiOpenCourtWindow = "dfuiOpenCourtWindow";
 
         // "Debug" window messages
-        public const string dfuiOpenQuestInspector = "dfuiOpenQuestInspector";
     }
 }

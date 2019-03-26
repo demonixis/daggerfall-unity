@@ -1,18 +1,15 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
 // Original Author: Gavin Clayton (interkarma@dfworkshop.net)
-// Contributors:    
-// 
+// Contributors:
+//
 // Notes:
 //
 
 using UnityEngine;
-using System;
-using System.Collections;
-using DaggerfallWorkshop;
 using DaggerfallWorkshop.Game.UserInterface;
 
 namespace DaggerfallWorkshop.Game.UserInterfaceWindows
@@ -22,18 +19,19 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
     /// Can optionally render previous window hierarchy before its own.
     /// Popups can be optionally cancelled at any time using the ESC key.
     /// </summary>
-    public class DaggerfallPopupWindow : DaggerfallBaseWindow
+    public abstract class DaggerfallPopupWindow : DaggerfallBaseWindow
     {
         IUserInterfaceWindow previousWindow;
 
-        Color screenDimColor = new Color32(0, 0, 0, 128);
+        //Color screenDimColor = new Color32(0, 0, 0, 128);
+        Color screenDimColor = Color.clear;
         bool allowCancel = true;
         bool cancelled = false;
 
         public Color ScreenDimColor
         {
             get { return GetScreenDimColor(); }
-            set { screenDimColor = value; }
+            set { screenDimColor = Color.clear;/*value*/; }
         }
 
         public bool AllowCancel
@@ -57,6 +55,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             : base(uiManager, screenWidth, screenHeight)
         {
             this.previousWindow = previousWindow;
+            this.screenDimColor.a = 0; //DaggerfallUnity.Settings.DimAlphaStrength;
         }
 
         protected override void Setup()
@@ -83,7 +82,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             base.Draw();
         }
 
-        public void CancelWindow()
+        public virtual void CancelWindow()
         {
             cancelled = true;
             RaiseOnCancelEvent(this);
@@ -92,11 +91,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         Color GetScreenDimColor()
         {
-            float alpha = DaggerfallUnity.Settings.DimAlphaStrength;
-            Color dimColor = screenDimColor;
-            dimColor.a = alpha;
-
-            return dimColor;
+            return screenDimColor;
         }
 
         #region Events

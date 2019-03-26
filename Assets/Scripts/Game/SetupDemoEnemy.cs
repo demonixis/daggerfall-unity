@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using DaggerfallWorkshop.Utility;
@@ -16,6 +16,8 @@ namespace DaggerfallWorkshop.Game
     {
         public MobileTypes EnemyType = MobileTypes.SkeletalWarrior;
         public MobileReactions EnemyReaction = MobileReactions.Hostile;
+        public MobileGender EnemyGender = MobileGender.Unspecified;
+        public byte ClassicSpawnDistanceType = 0;
 
         DaggerfallEntityBehaviour entityBehaviour;
 
@@ -40,7 +42,7 @@ namespace DaggerfallWorkshop.Game
         /// <summary>
         /// Sets up enemy based on current settings.
         /// </summary>
-        public void ApplyEnemySettings()
+        public void ApplyEnemySettings(MobileGender gender)
         {
             DaggerfallUnity dfUnity = DaggerfallUnity.Instance;
             Dictionary<int, MobileEnemy> enemyDict = GameObjectHelper.EnemyDict;
@@ -52,7 +54,8 @@ namespace DaggerfallWorkshop.Game
             {
                 // Setup mobile billboard
                 Vector2 size = Vector2.one;
-                dfMobile.SetEnemy(dfUnity, mobileEnemy, EnemyReaction);
+                mobileEnemy.Gender = gender;
+                dfMobile.SetEnemy(dfUnity, mobileEnemy, EnemyReaction, ClassicSpawnDistanceType);
 
                 // Setup controller
                 CharacterController controller = GetComponent<CharacterController>();
@@ -67,11 +70,7 @@ namespace DaggerfallWorkshop.Game
                     if (dfMobile.Summary.Enemy.Behaviour == MobileBehaviour.Flying)
                         controller.height /= 2f;
 
-                    // Uncomment below lines to limit maximum controller height
-                    // Some particularly tall sprites (e.g. giants) require this hack to get through doors
-                    // However they will appear sunken into ground as a result
-                    //if (controller.height > 1.9f)
-                    //    controller.height = 1.9f;
+                    controller.gameObject.layer = LayerMask.NameToLayer("Enemies");
                 }
 
                 // Setup sounds
@@ -86,8 +85,11 @@ namespace DaggerfallWorkshop.Game
                 // Setup entity
                 if (entityBehaviour)
                 {
-                    EnemyEntity entity = new EnemyEntity();
+                    EnemyEntity entity = new EnemyEntity(entityBehaviour);
                     entityBehaviour.Entity = entity;
+
+                    // Enemies are initially added to same world context as player
+                    entity.WorldContext = GameManager.Instance.PlayerEnterExit.WorldContext;
 
                     int enemyIndex = (int)EnemyType;
                     if (enemyIndex >= 0 && enemyIndex <= 42)
@@ -112,17 +114,18 @@ namespace DaggerfallWorkshop.Game
         /// Change enemy settings and configure in a single call.
         /// </summary>
         /// <param name="enemyType">Enemy type.</param>
-        public void ApplyEnemySettings(MobileTypes enemyType, MobileReactions enemyReaction)
+        public void ApplyEnemySettings(MobileTypes enemyType, MobileReactions enemyReaction, MobileGender gender, byte classicSpawnDistanceType = 0)
         {
             EnemyType = enemyType;
             EnemyReaction = enemyReaction;
-            ApplyEnemySettings();
+            ClassicSpawnDistanceType = classicSpawnDistanceType;
+            ApplyEnemySettings(gender);
         }
 
         /// <summary>
         /// Change enemy settings and configure in a single call.
         /// </summary>
-        public void ApplyEnemySettings(EntityTypes entityType, int careerIndex, bool isHostile = true)
+        public void ApplyEnemySettings(EntityTypes entityType, int careerIndex, MobileGender gender, bool isHostile = true)
         {
             // Get mobile type based on entity type and career index
             MobileTypes mobileType;
@@ -134,8 +137,9 @@ namespace DaggerfallWorkshop.Game
                 return;
 
             MobileReactions enemyReaction = (isHostile) ? MobileReactions.Hostile : MobileReactions.Passive;
+            MobileGender enemyGender = gender;
 
-            ApplyEnemySettings(mobileType, enemyReaction);
+            ApplyEnemySettings(mobileType, enemyReaction, enemyGender);
         }
 
         public void AlignToGround()

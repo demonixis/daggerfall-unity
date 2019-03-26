@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -42,6 +42,10 @@ namespace DaggerfallWorkshop
         void Start()
         {
             myLight = GetComponent<Light>();
+
+            // Disable interior light shadows
+            if (InteriorLight && !DaggerfallUnity.Settings.InteriorLightShadows)
+                myLight.shadows = LightShadows.None;
         }
 
         void OnDisable()

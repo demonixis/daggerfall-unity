@@ -4,6 +4,7 @@
 -- Questor: knight
 -- Repute: 70
 -- QuestId: 16
+-- Edited for Daggerfall Unity by Jay_H
 Messages: 12
 Quest: B0B70Y16
 -- Message panels
@@ -148,7 +149,10 @@ _S.01_ task:
 	killed 1 _monster_ saying 1011 
 
 _S.02_ task:
-	clicked npc _qgiver_ 
+	clicked npc _qgiver_
+
+_success_ task:
+	when _S.02_ and _S.01_
 	give pc nothing 
 	change repute with _local_ by +6 
 	change repute with _qgiver_ by +10 

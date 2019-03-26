@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -15,6 +15,8 @@ using System.Collections;
 using System.Collections.Generic;
 using DaggerfallConnect.Arena2;
 using DaggerfallWorkshop.Game.UserInterface;
+using DaggerfallWorkshop.Utility.AssetInjection;
+using DaggerfallWorkshop.Utility;
 
 namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 {
@@ -25,7 +27,9 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
     public class DaggerfallMessageBox : DaggerfallPopupWindow
     {
         const string buttonsFilename = "BUTTONS.RCI";
+        const float minTimePresented = 0.0833f;
 
+        Panel imagePanel = new Panel();
         Panel messagePanel = new Panel();
         Panel buttonPanel = new Panel();
         MultiFormatTextLabel label = new MultiFormatTextLabel();
@@ -34,6 +38,11 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         int buttonTextDistance = 4;
         MessageBoxButtons selectedButton = MessageBoxButtons.Cancel;
         bool clickAnywhereToClose = false;
+        DaggerfallMessageBox nextMessageBox;
+        int customYPos = -1;
+        float presentationTime = 0;
+
+        KeyCode extraProceedBinding = KeyCode.None;
 
         /// <summary>
         /// Default message box buttons are indices into BUTTONS.RCI.
@@ -67,6 +76,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         {
             Nothing,
             YesNo,
+            AnchorTeleport,
         }
 
         public int ButtonSpacing
@@ -92,15 +102,48 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             set { clickAnywhereToClose = value; }
         }
 
-        public DaggerfallMessageBox(IUserInterfaceManager uiManager, IUserInterfaceWindow previous = null)
-            : base(uiManager, previous)
+        public KeyCode ExtraProceedBinding
         {
+            get { return extraProceedBinding; }
+            set { extraProceedBinding = value; }
         }
 
-        public DaggerfallMessageBox(IUserInterfaceManager uiManager, CommonMessageBoxButtons buttons, int textId, IUserInterfaceWindow previous = null)
+        public Panel ImagePanel
+        {
+            get { return imagePanel; }
+        }
+
+        public DaggerfallMessageBox(IUserInterfaceManager uiManager, IUserInterfaceWindow previous = null, bool wrapText = false, int posY = -1)
             : base(uiManager, previous)
         {
-            SetupBox(textId, buttons);
+            if (wrapText)
+            {
+                label.WrapText = true;
+                // If wrapping text, set maxWidth to 288. This is just an aesthetically chosen value, as
+                // it is the widest text can be without making the parchment textures expand off the edges of the screen.
+                label.MaxTextWidth = 288;
+            }
+
+            if (posY > -1)
+                customYPos = posY;
+        }
+
+        public DaggerfallMessageBox(IUserInterfaceManager uiManager, CommonMessageBoxButtons buttons, TextFile.Token[] tokens, IUserInterfaceWindow previous = null, IMacroContextProvider mcp = null)
+            : base(uiManager, previous)
+        {
+            SetupBox(tokens, buttons, mcp);
+        }
+
+        public DaggerfallMessageBox(IUserInterfaceManager uiManager, CommonMessageBoxButtons buttons, int textId, IUserInterfaceWindow previous = null, IMacroContextProvider mcp = null)
+            : base(uiManager, previous)
+        {
+            SetupBox(textId, buttons, mcp);
+        }
+
+        public DaggerfallMessageBox(IUserInterfaceManager uiManager, CommonMessageBoxButtons buttons, string text, IUserInterfaceWindow previous = null)
+            : base(uiManager, previous)
+        {
+            SetupBox(text, buttons);
         }
 
         protected override void Setup()
@@ -111,17 +154,29 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             base.Setup();
 
             messagePanel.HorizontalAlignment = HorizontalAlignment.Center;
-            messagePanel.VerticalAlignment = VerticalAlignment.Middle;
+
+            if (customYPos > -1)
+            {
+                messagePanel.VerticalAlignment = VerticalAlignment.None;
+                messagePanel.Position = new Vector2(messagePanel.Position.x, customYPos);
+            }
+            else
+                messagePanel.VerticalAlignment = VerticalAlignment.Middle;
+
             DaggerfallUI.Instance.SetDaggerfallPopupStyle(DaggerfallUI.PopupStyle.Parchment, messagePanel);
             NativePanel.Components.Add(messagePanel);
 
             label.HorizontalAlignment = HorizontalAlignment.Center;
-            label.VerticalAlignment = VerticalAlignment.Top;
+            label.VerticalAlignment = VerticalAlignment.Middle;
             messagePanel.Components.Add(label);
 
             buttonPanel.HorizontalAlignment = HorizontalAlignment.Center;
-            buttonPanel.VerticalAlignment = VerticalAlignment.Bottom;
+            buttonPanel.VerticalAlignment = VerticalAlignment.None;
             messagePanel.Components.Add(buttonPanel);
+
+            imagePanel.HorizontalAlignment = HorizontalAlignment.Center;
+            imagePanel.VerticalAlignment = VerticalAlignment.Top;
+            messagePanel.Components.Add(imagePanel);
 
             IsSetup = true;
         }
@@ -136,9 +191,25 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         {
             base.OnPop();
             parentPanel.OnMouseClick -= ParentPanel_OnMouseClick;
+
+            // Check if any previous message boxes need to be closed as well.
+            DaggerfallMessageBox prevWindow = PreviousWindow as DaggerfallMessageBox;
+            if (prevWindow != null && prevWindow.nextMessageBox != null)
+            {
+                prevWindow.nextMessageBox.CloseWindow();
+            }
         }
 
         #region Public Methods
+
+        /// <summary>
+        /// Adds another nested message box to be displayed next when click detected.
+        /// </summary>
+        /// <param name="nextMessageBox">Next message box.</param>
+        public void AddNextMessageBox(DaggerfallMessageBox nextMessageBox)
+        {
+            this.nextMessageBox = nextMessageBox;
+        }
 
         public void Show()
         {
@@ -146,6 +217,25 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 Setup();
 
             uiManager.PushWindow(this);
+            presentationTime = Time.realtimeSinceStartup;
+        }
+
+        public override void Update()
+        {
+            base.Update();
+
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || Input.GetKeyUp(extraProceedBinding))
+            {
+                // if there is a nested next message box show it
+                if (this.nextMessageBox != null)
+                {
+                    nextMessageBox.Show();
+                }
+                else // or close window if there is no next message box to show
+                {
+                    CloseWindow();                    
+                }
+            }
         }
 
         public Button AddButton(MessageBoxButtons messageBoxButton)
@@ -154,7 +244,8 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 Setup();
 
             Texture2D background = DaggerfallUI.GetTextureFromCifRci(buttonsFilename, (int)messageBoxButton);
-            Button button = DaggerfallUI.AddButton(Vector2.zero, new Vector2(background.width, background.height), buttonPanel);
+            Button button = DaggerfallUI.AddButton(Vector2.zero, 
+                TextureReplacement.GetSize(background, buttonsFilename, (int)messageBoxButton), buttonPanel);
             button.BackgroundTexture = background;
             button.BackgroundTextureLayout = BackgroundLayout.StretchToFill;
             button.Tag = messageBoxButton;
@@ -166,7 +257,12 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             return button;
         }
 
-        public void SetText(params string[] rows)
+        public void SetText(string text, IMacroContextProvider mcp = null)
+        {
+            SetText(new string[] { text }, mcp);
+        }
+
+        public void SetText(string[] rows, IMacroContextProvider mcp = null)
         {
             // Tokenize rows
             List<TextFile.Token> tokenList = new List<TextFile.Token>();
@@ -185,25 +281,35 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             }
 
             // Set tokens
-            SetTextTokens(tokenList.ToArray());
+            SetTextTokens(tokenList.ToArray(), mcp);
         }
 
-        public void SetTextTokens(TextFile.Token[] tokens)
+        public void SetTextTokens(TextFile.Token[] tokens, IMacroContextProvider mcp = null, bool expandMacros = true)
         {
             if (!IsSetup)
                 Setup();
 
+            if (expandMacros)
+                MacroHelper.ExpandMacros(ref tokens, mcp);
             label.SetText(tokens);
             UpdatePanelSizes();
         }
 
-        public void SetTextTokens(int id)
+        public void SetTextTokens(int id, IMacroContextProvider mcp = null)
         {
             if (!IsSetup)
                 Setup();
 
             TextFile.Token[] tokens = DaggerfallUnity.Instance.TextProvider.GetRSCTokens(id);
-            SetTextTokens(tokens);
+            SetTextTokens(tokens, mcp);
+        }
+
+        /// <summary>
+        /// Must be set before text otherwise layout has already occurred.
+        /// </summary>
+        public void SetHighlightColor(Color highlightColor)
+        {
+            label.HighlightColor = highlightColor;
         }
 
         #endregion
@@ -233,20 +339,66 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                     finalSize.x += buttonSpacing;
             }
 
+            // If buttons have been added, resize label text by adding in the height of the finalized button panel.
+            if (finalSize.y - buttonPanel.Size.y > 0)
+                label.ResizeY(label.Size.y + (finalSize.y - buttonPanel.Size.y) + buttonTextDistance);
+
             buttonPanel.Size = finalSize;
-            messagePanel.Size = new Vector2(
-                label.Size.x + messagePanel.LeftMargin + messagePanel.RightMargin,
-                label.Size.y + buttonPanel.Size.y + buttonTextDistance + messagePanel.TopMargin + messagePanel.BottomMargin);
+
+            // Position buttons to be buttonTextDistance pixels below the repositioned text
+            if (buttons.Count > 0)
+            {
+                float buttonY = messagePanel.Size.y - ((messagePanel.Size.y - label.Size.y) / 2) - buttonPanel.Size.y - messagePanel.BottomMargin;
+                buttonPanel.Position = new Vector2(buttonPanel.Position.x, buttonY);
+            }
+
+            // Resize the message panel to get a clean border of 22x22 pixel textures
+            int minimum = 44;
+            float width = label.Size.x + messagePanel.LeftMargin + messagePanel.RightMargin;
+            float height = label.Size.y + messagePanel.TopMargin + messagePanel.BottomMargin;
+
+            if (width > minimum)
+                width = (float)Math.Ceiling(width / 22) * 22;
+            else
+                width = minimum;
+
+            if (height > minimum)
+                height = (float)Math.Ceiling(height / 22) * 22;
+            else
+                height = minimum;
+
+            messagePanel.Size = new Vector2(width, height);
         }
 
-        void SetupBox(int textId, CommonMessageBoxButtons buttons)
+        void SetupBox(TextFile.Token[] tokens, CommonMessageBoxButtons buttons, IMacroContextProvider mcp = null)
         {
-            SetTextTokens(textId);
+            SetTextTokens(tokens, mcp);
+            AddCommonButtons(buttons);
+        }
+
+        void SetupBox(int textId, CommonMessageBoxButtons buttons, IMacroContextProvider mcp = null)
+        {
+            SetTextTokens(textId, mcp);
+            AddCommonButtons(buttons);
+        }
+
+        void SetupBox(string text, CommonMessageBoxButtons buttons)
+        {
+            SetText(text);
+            AddCommonButtons(buttons);
+        }
+
+        void AddCommonButtons(CommonMessageBoxButtons buttons)
+        {
             switch (buttons)
             {
                 case CommonMessageBoxButtons.YesNo:
                     AddButton(MessageBoxButtons.Yes);
                     AddButton(MessageBoxButtons.No);
+                    break;
+                case CommonMessageBoxButtons.AnchorTeleport:
+                    AddButton(MessageBoxButtons.Anchor);
+                    AddButton(MessageBoxButtons.Teleport);
                     break;
             }
         }
@@ -257,8 +409,18 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void ParentPanel_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
-            if (uiManager.TopWindow == this && clickAnywhereToClose)
-                CloseWindow();
+            // Must be presented for minimum time before allowing to click through
+            // This prevents capturing parent-level click events and closing immediately
+            if (Time.realtimeSinceStartup - presentationTime < minTimePresented)
+                return;
+
+            if (uiManager.TopWindow == this)
+            {
+                if (nextMessageBox != null)
+                    nextMessageBox.Show();
+                else if (clickAnywhereToClose)
+                    CloseWindow();
+            }
         }
 
         #endregion

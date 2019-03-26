@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -9,10 +9,7 @@
 // Notes:
 //
 
-using UnityEngine;
 using System;
-using System.Collections;
-using System.Collections.Generic;
 
 namespace DaggerfallWorkshop.Game.Entity
 {
@@ -43,6 +40,9 @@ namespace DaggerfallWorkshop.Game.Entity
         WoodElf = 6,
         Khajiit = 7,
         Argonian = 8,
+        Vampire = 9,
+        Werewolf = 10,
+        Wereboar = 11,
     }
 
     /// <summary>
@@ -69,6 +69,49 @@ namespace DaggerfallWorkshop.Game.Entity
         Barbarian = 15,
         Warrior = 16,
         Knight = 17,
+    }
+
+    /// <summary>
+    /// Skills
+    /// </summary>
+    public enum Skills
+    {
+        None = -1,
+        Medical = 0,
+        Etiquette = 1,
+        Streetwise = 2,
+        Jumping = 3,
+        Orcish = 4,
+        Harpy = 5,
+        Giantish = 6,
+        Dragonish = 7,
+        Nymph = 8,
+        Daedric = 9,
+        Spriggan = 10,
+        Centaurian = 11,
+        Impish = 12,
+        Lockpicking = 13,
+        Mercantile = 14,
+        Pickpocket = 15,
+        Stealth = 16,
+        Swimming = 17,
+        Climbing = 18,
+        Backstabbing = 19,
+        Dodging = 20,
+        Running = 21,
+        Destruction = 22,
+        Restoration = 23,
+        Illusion = 24,
+        Alteration = 25,
+        Thaumaturgy = 26,
+        Mysticism = 27,
+        ShortBlade = 28,
+        LongBlade = 29,
+        HandToHand = 30,
+        Axe = 31,
+        BluntWeapon = 32,
+        Archery = 33,
+        CriticalStrike = 34,
     }
 
     /// <summary>
@@ -132,5 +175,20 @@ namespace DaggerfallWorkshop.Game.Entity
         Average = 2,
         Low = 3,
         VeryLow = 4,
+    }
+
+    /// <summary>
+    /// Varying visibility type for entities.
+    /// </summary>
+    [Flags]
+    public enum MagicalConcealmentFlags
+    {
+        None = 0,
+        InvisibleNormal = 1,
+        InvisibleTrue = 2,
+        BlendingNormal = 4,
+        BlendingTrue = 8,
+        ShadeNormal = 16,
+        ShadeTrue = 32,
     }
 }

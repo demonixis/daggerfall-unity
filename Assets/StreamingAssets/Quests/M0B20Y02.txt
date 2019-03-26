@@ -131,7 +131,7 @@ _pcgetsgold_ task:
 	end quest 
 
 _S.01_ task:
-	create foe _monster_ every 30 minutes 15 times with 30% success 
+	create foe _monster_ every 15 minutes 15 times with 50% success 
 
 _mondead_ task:
 	killed 6 _monster_ 
@@ -154,4 +154,5 @@ variable _map_
 variable _nomap_
 _S.09_ task:
 	when _map_ and _pcgetsgold_ 
-	reveal _newdung_ saying 1080 
+	reveal _newdung_ readmap
+    say 1080 

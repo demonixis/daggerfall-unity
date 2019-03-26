@@ -1,19 +1,17 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
 // Original Author: Gavin Clayton (interkarma@dfworkshop.net)
-// Contributors:    
+// Contributors:    Numidium
 // 
 // Notes:
 //
 
-using System;
-using System.IO;
 using DaggerfallConnect;
-using DaggerfallConnect.Arena2;
 using DaggerfallWorkshop.Game.Entity;
+using System.Collections.Generic;
 
 namespace DaggerfallWorkshop.Game.Player
 {
@@ -27,11 +25,42 @@ namespace DaggerfallWorkshop.Game.Player
         public DFCareer career;
         public string name;
         public int faceIndex;
-        public DaggerfallStats startingStats;
-        public DaggerfallStats workingStats;
-        public DaggerfallSkills startingSkills;
-        public DaggerfallSkills workingSkills;
+        public DaggerfallStats startingStats = new DaggerfallStats();
+        public DaggerfallStats workingStats = new DaggerfallStats();
+        public DaggerfallSkills startingSkills = new DaggerfallSkills();
+        public DaggerfallSkills workingSkills = new DaggerfallSkills();
         public PlayerReflexes reflexes;
+        public int currentHealth;
+        public int maxHealth;
+        public int currentSpellPoints;
+        public short reputationCommoners;
+        public short reputationMerchants;
+        public short reputationNobility;
+        public short reputationScholars;
+        public short reputationUnderworld;
+        public int currentFatigue;
+        public short[] skillUses;
+        public uint skillsRaisedThisLevel1;
+        public uint skillsRaisedThisLevel2;
+        public int startingLevelUpSkillSum;
+        public byte minMetalToHit;
+        public sbyte[] armorValues = new sbyte[DaggerfallEntity.NumberBodyParts];
+        public uint lastTimePlayerBoughtTraining;
+        public uint timeForThievesGuildLetter;
+        public uint timeForDarkBrotherhoodLetter;
+        public byte vampireClan;
+        public byte darkBrotherhoodRequirementTally;
+        public byte thievesGuildRequirementTally;
+        public uint timeToBecomeVampireOrWerebeast;
+        public byte hasStartedInitialVampireQuest;
+        public uint lastTimeVampireNeedToKillSatiated;
+        public uint lastTimePlayerAteOrDrankAtTavern;
+        public sbyte biographyReactionMod;
+        public List<string> biographyEffects;
+        public int classIndex;
+        public List<string> backStory;
+        public bool isCustom = false;
+        public Races classicTransformedRace = Races.None;
 
         public CharacterDocument()
         {
@@ -47,8 +76,16 @@ namespace DaggerfallWorkshop.Game.Player
             name = "Nameless";
             reflexes = PlayerReflexes.Average;
             workingSkills.SetDefaults();
-            workingStats.SetFromCareer(career);
+            workingStats.SetPermanentFromCareer(career);
+            startingLevelUpSkillSum = 0;
             faceIndex = 0;
+            skillUses = new short[DaggerfallSkills.Count];
+            skillsRaisedThisLevel1 = 0;
+            skillsRaisedThisLevel2 = 0;
+            for (int i = 0; i < armorValues.Length; i++)
+            {
+                armorValues[i] = 100;
+            }
         }
 
         public static RaceTemplate GetRaceTemplate(Races race)
@@ -79,14 +116,14 @@ namespace DaggerfallWorkshop.Game.Player
         {
             DaggerfallStats stats = new DaggerfallStats();
 
-            stats.Strength = dfClass.Strength;
-            stats.Intelligence = dfClass.Intelligence;
-            stats.Willpower = dfClass.Willpower;
-            stats.Agility = dfClass.Agility;
-            stats.Endurance = dfClass.Endurance;
-            stats.Personality = dfClass.Personality;
-            stats.Speed = dfClass.Speed;
-            stats.Luck = dfClass.Luck;
+            stats.SetPermanentStatValue(DFCareer.Stats.Strength, dfClass.Strength);
+            stats.SetPermanentStatValue(DFCareer.Stats.Intelligence, dfClass.Intelligence);
+            stats.SetPermanentStatValue(DFCareer.Stats.Willpower, dfClass.Willpower);
+            stats.SetPermanentStatValue(DFCareer.Stats.Agility, dfClass.Agility);
+            stats.SetPermanentStatValue(DFCareer.Stats.Endurance, dfClass.Endurance);
+            stats.SetPermanentStatValue(DFCareer.Stats.Personality, dfClass.Personality);
+            stats.SetPermanentStatValue(DFCareer.Stats.Speed, dfClass.Speed);
+            stats.SetPermanentStatValue(DFCareer.Stats.Luck, dfClass.Luck);
 
             return stats;
         }

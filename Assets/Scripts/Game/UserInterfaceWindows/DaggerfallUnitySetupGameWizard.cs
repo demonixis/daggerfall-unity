@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -63,15 +63,12 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         Checkbox mouseSmoothing;
         Checkbox leftHandWeapons;
         Checkbox playerNudity;
-
-        Checkbox enhancedSky;
-        Checkbox distantTerrain;
-        Checkbox realtimeReflections;
-        Checkbox tallGrass;
-        Checkbox flyingBirds;
+        Checkbox clickToAttack;
+        Checkbox sdfFontRendering;
 
         Color unselectedTextColor = new Color(0.6f, 0.6f, 0.6f, 1f);
         Color selectedTextColor = new Color(0.0f, 0.8f, 0.0f, 1.0f);
+        Color secondaryTextColor = new Color(0.8f, 0.8f, 0.8f, 1.0f);
 
         #endregion
 
@@ -84,26 +81,15 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         #region Fields
 
         const string titleScreenFilename = "StartupBackground2";
-        const string exitButtonText = "Exit";
         const float panelSwipeTime = 1;
         const SongFiles titleSongFile = SongFiles.song_5strong;
 
-        const string findArena2Tip = "Tip: Daggerfall contains a folder called 'arena2'";
-        const string foundArena2But = "Found 'arena2' but ";
-        const string missingTextures = "it's missing one or more TEXTURE files";
-        const string missingModels = "it's missing ARCH3D.BSA";
-        const string missingBlocks = "it's missing BLOCKS.BSA";
-        const string missingMaps = "it's missing MAPS.BSA";
-        const string missingSounds = "it's missing DAGGER.SND";
-        const string missingWoods = "it's missing WOODS.WLD";
-        const string missingVideos = "it's missing one or more .VID files";
-        const string justNotValid = "it does not appear to be valid";
-        const string pathValidated = "Great! This looks like a valid Daggerfall folder :)";
-        const string testText = "Test";
-        const string okText = "OK";
-        const string keepSetting = "Keep this setting? Changes will revert in 8 seconds.";
+        string findArena2Tip;
+        string pathValidated;
+        string testText;
+        string okText;
 
-        Color backgroundColor = new Color(0, 0, 0, 0.7f);
+        Color backgroundColor = new Color(0, 0, 0, 0.8f);
         Color confirmEnabledBackgroundColor = new Color(0.0f, 0.5f, 0.0f, 0.4f);
         Color confirmDisabledBackgroundColor = new Color(0.5f, 0.0f, 0.0f, 0.4f);
 
@@ -154,7 +140,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             exitButton.VerticalAlignment = VerticalAlignment.Bottom;
             exitButton.BackgroundColor = new Color(0.2f, 0.2f, 0.2f, 0.6f);
             exitButton.Outline.Enabled = true;
-            exitButton.Label.Text = exitButtonText;
+            exitButton.Label.Text = GetText("exit");
             exitButton.OnMouseClick += ExitButton_OnMouseClick;
             NativePanel.Components.Add(exitButton);
 
@@ -176,6 +162,11 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             {
                 DaggerfallUI.Instance.DaggerfallSongPlayer.Play(titleSongFile);
             }
+
+            // Sync SDF font rendering to current setting
+            // This is a special realtime setting as font rendering can change at any time, even during the setup process itself
+            if (sdfFontRendering != null)
+                sdfFontRendering.IsChecked = DaggerfallUnity.Settings.SDFFontRendering;
 
             // Move to next setup stage
             if (moveNextStage)
@@ -225,11 +216,13 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             versionLabel.Position = new Vector2(0, 1);
             versionLabel.HorizontalAlignment = HorizontalAlignment.Right;
             versionLabel.ShadowPosition = Vector2.zero;
-            versionLabel.TextColor = Color.gray;
+            versionLabel.TextColor = secondaryTextColor;
             versionLabel.Text = VersionInfo.DaggerfallUnityVersion;
             browserPanel.Components.Add(versionLabel);
 
             // Add help text
+            findArena2Tip = GetText("findArena2Tip");
+            pathValidated = GetText("pathValidated");
             helpLabel.Position = new Vector2(0, 145);
             helpLabel.HorizontalAlignment = HorizontalAlignment.Center;
             helpLabel.ShadowPosition = Vector2.zero;
@@ -241,7 +234,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         void CreateBackdrop()
         {
             // Add a block into the scene
-            GameObjectHelper.CreateRMBBlockGameObject("CUSTAA06.RMB");
+            GameObjectHelper.CreateRMBBlockGameObject("CUSTAA06.RMB", 0, 0);
             backdropCreated = true;
 
             // Clear background texture
@@ -272,7 +265,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
             // Add resolution title text
             TextLabel resolutionTitleLabel = new TextLabel();
-            resolutionTitleLabel.Text = "Resolution";
+            resolutionTitleLabel.Text = GetText("resolution");
             resolutionTitleLabel.Position = new Vector2(0, 2);
             //resolutionTitleLabel.ShadowPosition = Vector2.zero;
             resolutionTitleLabel.HorizontalAlignment = HorizontalAlignment.Center;
@@ -320,7 +313,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             resolutionScroller.BackgroundColor = resolutionList.BackgroundColor;
 
             // Add fullscreen checkbox
-            fullscreenCheckbox.Label.Text = "Fullscreen";
+            fullscreenCheckbox.Label.Text = GetText("fullscreen");
             fullscreenCheckbox.Label.ShadowPosition = DaggerfallUI.DaggerfallDefaultShadowPos;
             fullscreenCheckbox.Label.ShadowColor = Color.black;
             fullscreenCheckbox.Position = new Vector2(0, 76);
@@ -333,7 +326,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
             // Add quality title text
             TextLabel qualityTitleLabel = new TextLabel();
-            qualityTitleLabel.Text = "Quality";
+            qualityTitleLabel.Text = GetText("quality");
             qualityTitleLabel.Position = new Vector2(0, 92);
             //qualityTitleLabel.ShadowPosition = Vector2.zero;
             qualityTitleLabel.HorizontalAlignment = HorizontalAlignment.Center;
@@ -360,6 +353,8 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             qualityList.SelectedIndex = DaggerfallUnity.Settings.QualityLevel;
 
             // Test/confirm button
+            testText = GetText("testText");
+            okText = GetText("okText");
             testOrConfirmButton.Position = new Vector2(0, 160);
             testOrConfirmButton.Size = new Vector2(40, 12);
             testOrConfirmButton.Outline.Enabled = true;
@@ -372,14 +367,14 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         float optionPos = 12f;
         float optionSpacing = 12f;
-        Checkbox AddOption(float x, string text, string tip, bool isChecked)
+        Checkbox AddOption(float x, string key, bool isChecked)
         {
             Checkbox checkbox = new Checkbox();
-            checkbox.Label.Text = text;
+            checkbox.Label.Text = GetText(key);
             checkbox.Label.TextColor = selectedTextColor;
             checkbox.CheckBoxColor = selectedTextColor;
             checkbox.ToolTip = defaultToolTip;
-            checkbox.ToolTipText = tip;
+            checkbox.ToolTipText = GetText(string.Format("{0}Info", key));
             checkbox.IsChecked = isChecked;
             checkbox.Position = new Vector2(x, optionPos);
             optionsPanel.Components.Add(checkbox);
@@ -422,10 +417,11 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             optionsPanel.Size = new Vector2(318, 165);
             NativePanel.Components.Add(optionsPanel);
 
-            // Add options title text
-            TextLabel titleLabel = new TextLabel();
-            titleLabel.Text = "Options";
-            titleLabel.Position = new Vector2(0, 2);
+            // Add title text
+            TextLabel titleLabel = new TextLabel(DaggerfallUI.Instance.Font2);
+            titleLabel.Text = "Daggerfall Unity";
+            titleLabel.Position = new Vector2(0, 15);
+            titleLabel.TextScale = 1.4f;
             titleLabel.HorizontalAlignment = HorizontalAlignment.Center;
             optionsPanel.Components.Add(titleLabel);
 
@@ -435,33 +431,33 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             settingsPathLabel.Position = new Vector2(0, 170);
             settingsPathLabel.HorizontalAlignment = HorizontalAlignment.Center;
             settingsPathLabel.ShadowPosition = Vector2.zero;
-            settingsPathLabel.TextColor = Color.gray;
+            settingsPathLabel.TextColor = secondaryTextColor;
             settingsPathLabel.BackgroundColor = backgroundColor;
             optionsPanel.Components.Add(settingsPathLabel);
 
             // Setup options checkboxes
             float x = 8;
-            optionPos = 20;
-            alwayShowOptions = AddOption(x, "Always show this window", "Always show this window on startup\rOtherwise use settings.ini to configure", DaggerfallUnity.Settings.ShowOptionsAtStart);
-            vsync = AddOption(x, "Vertical Sync", "Sync FPS with monitor refresh", DaggerfallUnity.Settings.VSync);
-            swapHealthAndFatigue = AddOption(x, "Swap Health & Fatigue", "Swap health & fatigue bar colors", DaggerfallUnity.Settings.SwapHealthAndFatigueColors);
-            invertMouseVertical = AddOption(x, "Invert Mouse", "Invert mouse-look vertical", DaggerfallUnity.Settings.InvertMouseVertical);
-            mouseSmoothing = AddOption(x, "Mouse Smoothing", "Smooth mouse-look sampling", DaggerfallUnity.Settings.MouseLookSmoothing);
-            leftHandWeapons = AddOption(x, "Left Hand Weapons", "Draw weapons on left side of screen", GetLeftHandWeapons());
-            playerNudity = AddOption(x, "Player Nudity", "Allow nudity on paper doll", DaggerfallUnity.Settings.PlayerNudity);
+            optionPos = 60;
+            alwayShowOptions = AddOption(x, "alwayShowOptions", DaggerfallUnity.Settings.ShowOptionsAtStart);
+            vsync = AddOption(x, "vsync", DaggerfallUnity.Settings.VSync);
+            swapHealthAndFatigue = AddOption(x, "swapHealthAndFatigue", DaggerfallUnity.Settings.SwapHealthAndFatigueColors);
+            invertMouseVertical = AddOption(x, "invertMouseVertical", DaggerfallUnity.Settings.InvertMouseVertical);
+            mouseSmoothing = AddOption(x, "mouseSmoothing", DaggerfallUnity.Settings.MouseLookSmoothing);
+
+            x = 165;
+            optionPos = 60;
+            leftHandWeapons = AddOption(x, "leftHandWeapons", GetLeftHandWeapons());
+            playerNudity = AddOption(x, "playerNudity", DaggerfallUnity.Settings.PlayerNudity);
+            clickToAttack = AddOption(x, "clickToAttack", DaggerfallUnity.Settings.ClickToAttack);
 
             // Setup mods checkboxes
-            x = 165;
-            optionPos = 20;
-            enhancedSky = AddOption(x, "Enhanced Sky (LypyL)", "Enhanced sky with lunar cycles", DaggerfallUnity.Settings.LypyL_EnhancedSky);
-            distantTerrain = AddOption(x, "Distant Terrain (Nystul)", "Enhanced and distant terrain", DaggerfallUnity.Settings.Nystul_IncreasedTerrainDistance);
-            realtimeReflections = AddOption(x, "Realtime Reflections (Nystul)", "Realtime reflections on water and select surfaces", DaggerfallUnity.Settings.Nystul_RealtimeReflections);
-            tallGrass = AddOption(x, "Tall Grass (Uncanny_Valley)", "Animated tall grass", DaggerfallUnity.Settings.UncannyValley_RealGrass);
-            flyingBirds = AddOption(x, "Flying Birds (Uncanny Valley)", "Animated flying birds", DaggerfallUnity.Settings.UncannyValley_BirdsInDaggerfall);
+            // TODO: Might rework this, but could still be useful for certain core mods later
+            sdfFontRendering = AddOption(x, "sdfFontRendering", DaggerfallUnity.Settings.SDFFontRendering);
+            sdfFontRendering.OnToggleState += SDFFontRendering_OnToggleState;
+            //bool exampleModCheckbox = AddOption(x, "Example", "Example built-in mod", DaggerfallUnity.Settings.ExampleModOption);
 
             // Add mod note
-            string modNote = "Note: Enabling mods can increase performance requirements";
-            TextLabel modNoteLabel = DaggerfallUI.AddTextLabel(DaggerfallUI.DefaultFont, new Vector2(0, 115), modNote, optionsPanel);
+            TextLabel modNoteLabel = DaggerfallUI.AddTextLabel(DaggerfallUI.DefaultFont, new Vector2(0, 125), GetText("modNote"), optionsPanel);
             modNoteLabel.HorizontalAlignment = HorizontalAlignment.Center;
             modNoteLabel.ShadowPosition = Vector2.zero;
 
@@ -470,7 +466,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             optionsConfirmButton.Position = new Vector2(0, optionsPanel.InteriorHeight - 15);
             optionsConfirmButton.Size = new Vector2(40, 12);
             optionsConfirmButton.Outline.Enabled = true;
-            optionsConfirmButton.Label.Text = "Play";
+            optionsConfirmButton.Label.Text = GetText("play");
             optionsConfirmButton.BackgroundColor = new Color(0.0f, 0.5f, 0.0f, 0.4f);
             optionsConfirmButton.HorizontalAlignment = HorizontalAlignment.Center;
             optionsConfirmButton.OnMouseClick += OptionsConfirmButton_OnMouseClick;
@@ -479,11 +475,11 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             // Restart button
             Button restartButton = new Button();
             restartButton.Size = new Vector2(45, 12);
-            restartButton.Label.Text = "< Restart";
+            restartButton.Label.Text = string.Format("< {0}", GetText("restart"));
             restartButton.Label.ShadowPosition = Vector2.zero;
-            restartButton.Label.TextColor = Color.gray;
+            restartButton.Label.TextColor = secondaryTextColor;
             restartButton.ToolTip = defaultToolTip;
-            restartButton.ToolTipText = "Restart setup from beginning";
+            restartButton.ToolTipText = GetText("restartInfo");
             restartButton.VerticalAlignment = VerticalAlignment.Top;
             restartButton.HorizontalAlignment = HorizontalAlignment.Left;
             restartButton.OnMouseClick += RestartButton_OnMouseClick;
@@ -492,9 +488,8 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             if (DaggerfallUnity.Settings.LypyL_ModSystem)
             {
                 Button ShowModsButton = new Button();
-                ShowModsButton.Label.Text = "Mods";
-                ShowModsButton.Position = new Vector2(0, optionsConfirmButton.Position.y);
-                ShowModsButton.HorizontalAlignment = HorizontalAlignment.Left;
+                ShowModsButton.Label.Text = GetText("mods");
+                ShowModsButton.Position = new Vector2(3, optionsConfirmButton.Position.y);
                 ShowModsButton.Size = optionsConfirmButton.Size;
                 ShowModsButton.BackgroundColor = optionsConfirmButton.BackgroundColor;
                 ShowModsButton.Label.TextColor = optionsConfirmButton.Label.TextColor;
@@ -503,6 +498,23 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 ShowModsButton.OnMouseClick += ModsButton_OnOnMouseBlick;
             }
 
+            // Advanced Settings
+            Button AdvancedSettingsButton = new Button();
+            AdvancedSettingsButton.Label.Text = GetText("advanced");
+            AdvancedSettingsButton.Size = new Vector2(45, 12);
+            AdvancedSettingsButton.Position = new Vector2(optionsPanel.InteriorWidth - AdvancedSettingsButton.Size.x - 3, optionsConfirmButton.Position.y);
+            AdvancedSettingsButton.BackgroundColor = optionsConfirmButton.BackgroundColor;
+            AdvancedSettingsButton.Label.TextColor = optionsConfirmButton.Label.TextColor;
+            AdvancedSettingsButton.Outline.Enabled = true;
+            optionsPanel.Components.Add(AdvancedSettingsButton);
+            AdvancedSettingsButton.OnMouseClick += AdvancedSettingsButton_OnOnMouseBlick;
+
+        }
+
+        private void SDFFontRendering_OnToggleState()
+        {
+            // Immediately switch font rendering
+            DaggerfallUnity.Settings.SDFFontRendering = sdfFontRendering.IsChecked;
         }
 
         //void ShowSummaryPanel()
@@ -552,21 +564,21 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         string GetInvalidPathHelpText(DFValidator.ValidationResults validationResults)
         {
             if (!validationResults.TexturesValid)
-                return foundArena2But + missingTextures;
+                return string.Format("{0} {1}", GetText("foundArena2But"), GetText("missingTextures"));
             else if (!validationResults.ModelsValid)
-                return foundArena2But + missingModels;
+                return string.Format("{0} {1}", GetText("foundArena2But"), GetText("missingModels"));
             else if (!validationResults.BlocksValid)
-                return foundArena2But + missingBlocks;
+                return string.Format("{0} {1}", GetText("foundArena2But"), GetText("missingBlocks"));
             else if (!validationResults.MapsValid)
-                return foundArena2But + missingMaps;
+                return string.Format("{0} {1}", GetText("foundArena2But"), GetText("missingMaps"));
             else if (!validationResults.SoundsValid)
-                return foundArena2But + missingSounds;
+                return string.Format("{0} {1}", GetText("foundArena2But"), GetText("missingSounds"));
             else if (!validationResults.WoodsValid)
-                return foundArena2But + missingWoods;
+                return string.Format("{0} {1}", GetText("foundArena2But"), GetText("missingWoods"));
             else if (!validationResults.VideosValid)
-                return foundArena2But + missingVideos;
+                return string.Format("{0} {1}", GetText("foundArena2But"), GetText("missingVideos"));
             else
-                return justNotValid;
+                return GetText("justNotValid");
         }
 
         void ShowNextStage()
@@ -593,7 +605,10 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             }
         }
 
-
+        private static string GetText(string key)
+        {
+            return TextManager.Instance.GetText("MainMenu", key);
+        }
 
         #endregion
 
@@ -700,12 +715,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             DaggerfallUnity.Settings.MouseLookSmoothing = mouseSmoothing.IsChecked;
             DaggerfallUnity.Settings.Handedness = GetHandedness(leftHandWeapons.IsChecked);
             DaggerfallUnity.Settings.PlayerNudity = playerNudity.IsChecked;
-
-            DaggerfallUnity.Settings.LypyL_EnhancedSky = enhancedSky.IsChecked;
-            DaggerfallUnity.Settings.Nystul_IncreasedTerrainDistance = distantTerrain.IsChecked;
-            DaggerfallUnity.Settings.Nystul_RealtimeReflections = realtimeReflections.IsChecked;
-            DaggerfallUnity.Settings.UncannyValley_RealGrass = tallGrass.IsChecked;
-            DaggerfallUnity.Settings.UncannyValley_BirdsInDaggerfall = flyingBirds.IsChecked;
+            DaggerfallUnity.Settings.ClickToAttack = clickToAttack.IsChecked;
 
             DaggerfallUnity.Settings.SaveSettings();
             moveNextStage = true;
@@ -741,6 +751,17 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 DaggerfallUI.UIManager.PushWindow(modLoaderWindow);
             }
         }
+
+        // Advanced Settings
+        private void AdvancedSettingsButton_OnOnMouseBlick(BaseScreenComponent sender, Vector2 position)
+        {
+            if (optionsPanel.Enabled)
+            {
+                AdvancedSettingsWindow advancedSettingsWindow = new AdvancedSettingsWindow(DaggerfallUI.UIManager);
+                DaggerfallUI.UIManager.PushWindow(advancedSettingsWindow);
+            }
+        }
+
         #endregion
     }
 }

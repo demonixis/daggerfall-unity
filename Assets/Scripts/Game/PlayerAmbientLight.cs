@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -17,16 +17,18 @@ namespace DaggerfallWorkshop.Game
 {
     /// <summary>
     /// Peer this with Player and PlayerEnterExit to change ambient light based on player surroundings.
-    /// For example, Daggerfall scales ambient light up and down in dungeons with palace blocks (e.g. Wayrest).
-    /// Ambient light is dimmed when player leaves palace block and brightened on return.
+    /// For example, Daggerfall scales ambient light up and down in dungeons with castle blocks (e.g. Wayrest).
+    /// Ambient light is dimmed when player leaves castle block and brightened on return.
     /// </summary>
     public class PlayerAmbientLight : MonoBehaviour
     {
         public Color ExteriorNoonAmbientLight = new Color(0.9f, 0.9f, 0.9f);
         public Color ExteriorNightAmbientLight = new Color(0.25f, 0.25f, 0.25f);
         public Color InteriorAmbientLight = new Color(0.18f, 0.18f, 0.18f);
+        public Color InteriorNightAmbientLight = new Color(0.20f, 0.18f, 0.20f);
         public Color DungeonAmbientLight = new Color(0.12f, 0.12f, 0.12f);
-        public Color PalaceAmbientLight = new Color(0.58f, 0.58f, 0.58f);
+        public Color CastleAmbientLight = new Color(0.58f, 0.58f, 0.58f);
+        public Color SpecialAreaLight = new Color(0.58f, 0.58f, 0.58f);
         public float FadeDuration = 3f;
         public float FadeStep = 0.1f;
 
@@ -61,14 +63,19 @@ namespace DaggerfallWorkshop.Game
                 }
                 else if (playerEnterExit.IsPlayerInside && !playerEnterExit.IsPlayerInsideDungeon)
                 {
-                    targetAmbientLight = InteriorAmbientLight;
+                    if (DaggerfallUnity.Instance.WorldTime.Now.IsNight)
+                        targetAmbientLight = InteriorNightAmbientLight;
+                    else
+                        targetAmbientLight = InteriorAmbientLight;
                 }
                 else if (playerEnterExit.IsPlayerInside && playerEnterExit.IsPlayerInsideDungeon)
                 {
-                    if (playerEnterExit.IsPlayerInsideDungeonPalace)
-                        targetAmbientLight = PalaceAmbientLight;
+                    if (playerEnterExit.IsPlayerInsideDungeonCastle)
+                        targetAmbientLight = CastleAmbientLight;
+                    else if (playerEnterExit.IsPlayerInsideSpecialArea)
+                        targetAmbientLight = SpecialAreaLight;
                     else
-                        targetAmbientLight = DungeonAmbientLight;
+                        targetAmbientLight = DungeonAmbientLight * DaggerfallUnity.Settings.DungeonAmbientLightScale;
                 }
 
                 yield return new WaitForSeconds(pollSpeed);
@@ -77,27 +84,40 @@ namespace DaggerfallWorkshop.Game
 
         IEnumerator ChangeAmbientLight()
         {
-            fadeRunning = true;
-
-            float progress = 0;
-            float increment = FadeStep / FadeDuration;
-            Color startColor = UnityEngine.RenderSettings.ambientLight;
-            while (progress < 1)
+            if (!playerEnterExit.IsPlayerInsideDungeon)
             {
-                UnityEngine.RenderSettings.ambientLight = Color.Lerp(startColor, targetAmbientLight, progress);
-                progress += increment;
-                yield return new WaitForSeconds(FadeStep);
+                // Do not smoothly change ambient light outside of dungeons
+                fadeRunning = false;
+                RenderSettings.ambientLight = targetAmbientLight;
+                yield break;
             }
-
-            UnityEngine.RenderSettings.ambientLight = targetAmbientLight;
-            fadeRunning = false;
+            else
+            {
+                // Smoothly lerp ambient light inside dungeons when target ambient level changes
+                fadeRunning = true;
+                float progress = 0;
+                float increment = FadeStep / FadeDuration;
+                Color startColor = RenderSettings.ambientLight;
+                while (progress < 1)
+                {
+                    RenderSettings.ambientLight = Color.Lerp(startColor, targetAmbientLight, progress);
+                    progress += increment;
+                    yield return new WaitForSeconds(FadeStep);
+                }
+                RenderSettings.ambientLight = targetAmbientLight;
+                fadeRunning = false;
+            }
         }
 
         Color CalcDaytimeAmbientLight()
         {
             float scale = sunlightManager.DaylightScale * sunlightManager.ScaleFactor;
 
-            return Color.Lerp(ExteriorNightAmbientLight, ExteriorNoonAmbientLight, scale);
+            Color startColor = ExteriorNightAmbientLight;
+            if (DaggerfallUnity.Instance.WorldTime.Now.IsNight)
+                startColor *= DaggerfallUnity.Settings.NightAmbientLightScale;
+
+            return Color.Lerp(startColor, ExteriorNoonAmbientLight, scale);
         }
     }
 }

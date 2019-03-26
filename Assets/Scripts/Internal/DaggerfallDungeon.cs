@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -20,6 +20,7 @@ using DaggerfallConnect;
 using DaggerfallConnect.Arena2;
 using DaggerfallConnect.Utility;
 using DaggerfallWorkshop.Utility;
+using DaggerfallWorkshop.Game;
 
 namespace DaggerfallWorkshop
 {
@@ -36,11 +37,19 @@ namespace DaggerfallWorkshop
         public int[] DungeonTextureTable = new int[] { 119, 120, 122, 123, 124, 168 };
 
         // Random monsters
-        public float RandomMonsterPower = 0.5f;
         public int RandomMonsterVariance = 4;
 
         GameObject startMarker = null;
         GameObject enterMarker = null;
+
+        /// <summary>
+        /// Gets the scene name for the dungeon at the given location.
+        /// </summary>
+        public static string GetSceneName(DFLocation location)
+        {
+            return string.Format("DaggerfallDungeon [Region={0}, Name={1}]", location.RegionName, location.Name);
+        }
+
 
         public DungeonSummary Summary
         {
@@ -73,7 +82,7 @@ namespace DaggerfallWorkshop
             public DFRegion.DungeonTypes DungeonType;
         }
 
-        public void SetDungeon(DFLocation location)
+        public void SetDungeon(DFLocation location, bool importEnemies = true)
         {
             if (!ReadyCheck())
                 return;
@@ -102,9 +111,9 @@ namespace DaggerfallWorkshop
             // Perform layout
             startMarker = null;
             if (location.Name == "Orsinium")
-                LayoutOrsinium(ref location);
+                LayoutOrsinium(ref location, importEnemies);
             else
-                LayoutDungeon(ref location);
+                LayoutDungeon(ref location, importEnemies);
 
             // Seal location
             isSet = true;
@@ -123,51 +132,64 @@ namespace DaggerfallWorkshop
 
         public void RandomiseDungeonTextureTable()
         {
-            DungeonTextureTable = StaticTextureTables.RandomTextureTable(UnityEngine.Random.Range(int.MinValue, int.MaxValue));
+            DungeonTextureTable = DungeonTextureTables.RandomTextureTableAlternate(UnityEngine.Random.Range(int.MinValue, int.MaxValue));
             ApplyDungeonTextureTable();
+        }
+
+        /// <summary>
+        /// Helper to check if dungeon is a main story dungeon.
+        /// </summary>
+        /// <param name="id">ID of dungeon.</param>
+        /// <returns>True if dungeon is a main story dungeon.</returns>
+        public static bool IsMainStoryDungeon(int id)
+        {
+            bool mainStoryDungeon = false;
+            switch (id)
+            {
+                case 187853213:         // Daggerfall/Privateer's Hold
+                case 630439035:         // Wayrest/Wayrest
+                case 1291010263:        // Daggerfall/Daggerfall
+                case 6634853:           // Sentinel/Sentinel
+                case 19021260:          // Orsinium Area/Orsinium
+                case 728811286:         // Wrothgarian Mountains/Shedungent
+                case 701948302:         // Dragontail Mountains/Scourg Barrow
+                case 83032363:          // Wayrest/Woodborne Hall
+                case 1001:              // High Rock sea coast/Mantellan Crux
+                case 207828842:         // Menevia/Lysandus' Tomb
+                case 9570447:           // Daggerfall/Castle Necromoghan
+                case 2352284:           // Betony/Tristore Laboratory
+                case 336619236:         // Ykalon/Castle Llugwych
+                case 43196334:          // Isle of Balfiera/Direnni Tower
+                    mainStoryDungeon = true;
+                    break;
+                default:
+                    break;
+            }
+
+            return mainStoryDungeon;
         }
 
         public void UseLocationDungeonTextureTable()
         {
-            // Hard-coding location texture tables as missing information to generate at runtime
-            // This will be replaced with true implementation when possible
-            switch (Summary.ID)
+            // Generates dungeon texture table from random seed
+            // RandomDungeonTextures are read from settings.ini. Values are
+            // 0 : Classic textures (swamp and woodland texture sets unused)
+            // 1 : Textures by climate + classic textures for main story dungeons
+            // 2 : Textures by climate for all dungeons
+            // 3 : Randomized + classic textures for main story dungeons (method used in earlier DF Unity builds)
+            // 4 : Randomized for all dungeons
+            bool mainStoryDungeon = IsMainStoryDungeon(Summary.ID);
+            int randomDungeonTextures = DaggerfallUnity.Settings.RandomDungeonTextures;
+            // If not overriding with other textures (modes 2 and 4), use classic algorithm for main story dungeons
+            if (mainStoryDungeon && randomDungeonTextures != 2 && randomDungeonTextures != 4)
+                DungeonTextureTable = DungeonTextureTables.RandomTextureTableClassic(Summary.LocationData.Dungeon.RecordElement.Header.LocationId);
+            else // Otherwise, use a random texture according to the mode set in settings.ini
             {
-                case 187853213:         // Daggerfall/Privateer's Hold
-                    DungeonTextureTable = StaticTextureTables.PrivateersHold;
-                    break;
-                case 630439035:         // Wayrest/Wayrest
-                    DungeonTextureTable = StaticTextureTables.Wayrest;
-                    break;
-                case 1291010263:        // Daggerfall/Daggerfall
-                    DungeonTextureTable = StaticTextureTables.Daggerfall;
-                    break;
-                case 6634853:           // Sentinel/Sentinel
-                    DungeonTextureTable = StaticTextureTables.Sentinel;
-                    break;
-                case 19021260:          // Orsinium Area/Orsinium
-                    DungeonTextureTable = StaticTextureTables.Orsinium;
-                    break;
-                case 728811286:         // Wrothgarian Mountains/Shedungent
-                    DungeonTextureTable = StaticTextureTables.Shedungent;
-                    break;
-                case 701948302:         // Dragontail Mountains/Scourg Barrow
-                    DungeonTextureTable = StaticTextureTables.ScourgBarrow;
-                    break;
-                case 83032363:          // Wayrest/Woodborne Hall
-                    DungeonTextureTable = StaticTextureTables.WoodborneHall;
-                    break;
-                case 1001:              // High Rock sea coast/Mantellan Crux
-                    DungeonTextureTable = StaticTextureTables.MantellanCrux;
-                    break;
-                case 207828842:         // Menevia/Lysandus' Tomb
-                    DungeonTextureTable = StaticTextureTables.LysandusTomb;
-                    break;
-                default:                // Everywhere else - random table seeded from ID
-                    DungeonTextureTable = StaticTextureTables.RandomTextureTable(Summary.ID);
-                    break;
+                if (randomDungeonTextures < 3)
+                    DungeonTextureTable = DungeonTextureTables.RandomTextureTableClassic(Summary.LocationData.Dungeon.RecordElement.Header.LocationId, DaggerfallUnity.Settings.RandomDungeonTextures);
+                else
+                    DungeonTextureTable = DungeonTextureTables.RandomTextureTableAlternate(Summary.ID);
             }
-
             ApplyDungeonTextureTable();
         }
 
@@ -226,7 +248,7 @@ namespace DaggerfallWorkshop
 
         #region Private Methods
 
-        private void LayoutDungeon(ref DFLocation location)
+        private void LayoutDungeon(ref DFLocation location, bool importEnemies = true)
         {
 #if SHOW_LAYOUT_TIMES
             // Start timing
@@ -234,24 +256,42 @@ namespace DaggerfallWorkshop
             long startTime = stopwatch.ElapsedMilliseconds;
 #endif
 
+            // Get player level - use level 1 if game not running (e.g. importing in editor mode)
+            float playerLevel = 1;
+            if (Application.isPlaying)
+                playerLevel = GameManager.Instance.PlayerEntity.Level;
+
+            // Calculate monster power - this is a clamped 0-1 value based on player's level from 1-20
+            float monsterPower = Mathf.Clamp01(playerLevel / 20f);
+
             // Create dungeon layout
-            foreach (var block in location.Dungeon.Blocks)
+            for (int i = 0; i < summary.LocationData.Dungeon.Blocks.Length; i++)
             {
+                DFLocation.DungeonBlock block = summary.LocationData.Dungeon.Blocks[i];
                 GameObject go = GameObjectHelper.CreateRDBBlockGameObject(
                     block.BlockName,
                     DungeonTextureTable,
                     block.IsStartingBlock,
                     Summary.DungeonType,
-                    RandomMonsterPower,
+                    monsterPower,
                     RandomMonsterVariance,
                     (int)DateTime.Now.Ticks/*Summary.ID*/,      // TODO: Add more options for seed
-                    dfUnity.Option_DungeonBlockPrefab);
+                    dfUnity.Option_DungeonBlockPrefab,
+                    importEnemies);
                 go.transform.parent = this.transform;
                 go.transform.position = new Vector3(block.X * RDBLayout.RDBSide, 0, block.Z * RDBLayout.RDBSide);
 
                 DaggerfallRDBBlock daggerfallBlock = go.GetComponent<DaggerfallRDBBlock>();
                 if (block.IsStartingBlock)
-                    FindMarkers(daggerfallBlock);
+                    FindMarkers(daggerfallBlock, ref block, true); // Assign start marker and enter marker
+                else
+                    FindMarkers(daggerfallBlock, ref block, false); // Only find water level and palaceblock info from start marker
+
+                summary.LocationData.Dungeon.Blocks[i].WaterLevel = block.WaterLevel;
+                summary.LocationData.Dungeon.Blocks[i].CastleBlock = block.CastleBlock;
+
+                // Add water blocks
+                RDBLayout.AddWater(go, go.transform.position, block.WaterLevel);
             }
 
 #if SHOW_LAYOUT_TIMES
@@ -262,11 +302,15 @@ namespace DaggerfallWorkshop
         }
 
         // Orsinium defines two blocks at [-1,-1]
-        private void LayoutOrsinium(ref DFLocation location)
+        private void LayoutOrsinium(ref DFLocation location, bool importEnemies = true)
         {
+            // Calculate monster power - this is a clamped 0-1 value based on player's level from 1-20
+            float monsterPower = Mathf.Clamp01(GameManager.Instance.PlayerEntity.Level / 20f);
+
             // Create dungeon layout and handle misplaced block
-            foreach (var block in location.Dungeon.Blocks)
+            for (int i = 0; i < summary.LocationData.Dungeon.Blocks.Length; i++)
             {
+                DFLocation.DungeonBlock block = summary.LocationData.Dungeon.Blocks[i];
                 if (block.X == -1 && block.Z == -1 && block.BlockName == "N0000065.RDB")
                     continue;
 
@@ -275,21 +319,30 @@ namespace DaggerfallWorkshop
                     DungeonTextureTable,
                     block.IsStartingBlock,
                     Summary.DungeonType,
-                    RandomMonsterPower,
+                    monsterPower,
                     RandomMonsterVariance,
                     (int)DateTime.Now.Ticks/*Summary.ID*/,      // TODO: Add more options for seed
-                    dfUnity.Option_DungeonBlockPrefab);
+                    dfUnity.Option_DungeonBlockPrefab,
+                    importEnemies);
                 go.transform.parent = this.transform;
                 go.transform.position = new Vector3(block.X * RDBLayout.RDBSide, 0, block.Z * RDBLayout.RDBSide);
 
                 DaggerfallRDBBlock daggerfallBlock = go.GetComponent<DaggerfallRDBBlock>();
                 if (block.IsStartingBlock)
-                    FindMarkers(daggerfallBlock);
+                    FindMarkers(daggerfallBlock, ref block, true); // Assign start marker and enter marker
+                else
+                    FindMarkers(daggerfallBlock, ref block, false); // Only find water level and castle block info from start marker
+
+                summary.LocationData.Dungeon.Blocks[i].WaterLevel = block.WaterLevel;
+                summary.LocationData.Dungeon.Blocks[i].CastleBlock = block.CastleBlock;
+
+                // Add water blocks
+                RDBLayout.AddWater(go, go.transform.position, block.WaterLevel);
             }
         }
 
-        // Finds start and enter markers, should only be called for starting block
-        private void FindMarkers(DaggerfallRDBBlock dfBlock)
+        // Finds start and enter markers, should be called with true for starting block, otherwise false to just get water level and castle block data
+        private void FindMarkers(DaggerfallRDBBlock dfBlock, ref DFLocation.DungeonBlock block, bool assign)
         {
             if (!dfBlock)
                 throw new Exception("DaggerfallDungeon: dfBlock cannot be null.");
@@ -301,8 +354,15 @@ namespace DaggerfallWorkshop
                 if (dfBlock.StartMarkers.Length > 1)
                     DaggerfallUnity.LogMessage("DaggerfallDungeon: Multiple 'Start' markers found. Using first marker.", true);
 
-                startMarker = dfBlock.StartMarkers[0];
+                if (assign)
+                    startMarker = dfBlock.StartMarkers[0];
+
+                DaggerfallBillboard dfBillboard = dfBlock.StartMarkers[0].GetComponent<DaggerfallBillboard>();
+                block.WaterLevel = dfBillboard.Summary.WaterLevel;
+                block.CastleBlock = dfBillboard.Summary.CastleBlock;
             }
+            else // No water
+                block.WaterLevel = 10000;
 
             if (dfBlock.EnterMarkers != null && dfBlock.EnterMarkers.Length > 0)
             {
@@ -312,7 +372,8 @@ namespace DaggerfallWorkshop
                 if (dfBlock.EnterMarkers.Length > 1)
                     DaggerfallUnity.LogMessage("DaggerfallDungeon: Multiple 'Enter' markers found. Using first marker.", true);
 
-                enterMarker = dfBlock.EnterMarkers[0];
+                if (assign)
+                    enterMarker = dfBlock.EnterMarkers[0];
             }
         }
 

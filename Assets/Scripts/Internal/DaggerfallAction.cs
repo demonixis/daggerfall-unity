@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -12,11 +12,13 @@
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
-using System.IO;
 using DaggerfallConnect;
+using DaggerfallConnect.Arena2;
+using DaggerfallConnect.Save;
 using DaggerfallWorkshop.Game.UserInterfaceWindows;
 using DaggerfallWorkshop.Game;
 using DaggerfallWorkshop.Game.Entity;
+using DaggerfallWorkshop.Game.MagicAndEffects;
 
 namespace DaggerfallWorkshop
 {
@@ -28,8 +30,9 @@ namespace DaggerfallWorkshop
         public const int TYPE_11_TEXT_INDEX = 8600;
         public const int TYPE_12_TEXT_INDEX = 5400;
         public const int ANSWER_TEXT_INDEX = 5656;
+        public const int TYPE_99_TEXT_INDEX = 7700;
 
-        public bool ActionEnabled = false;                                          // Enable/disable action - not currently being used, but some objects are single activate
+        public bool ActionEnabled = false;                                          // Enable/disable action. Currently only used in the DoorText action, but some objects are single activate
         public bool PlaySound = true;                                               // Play sound if present (ActionSound > 0)
         public string ModelDescription = string.Empty;                              // Description string for this model
         public DFBlock.RdbActionFlags ActionFlag = DFBlock.RdbActionFlags.None;     // Action flag value
@@ -52,6 +55,7 @@ namespace DaggerfallWorkshop
 
         AudioSource audioSource;
         ActionState currentState;
+        float cooldown;
 
         //lookup for action type12, temp. storing them here
         static Dictionary<int, string[]> actionTypeTwelveLookup = new Dictionary<int, string[]>()
@@ -89,6 +93,12 @@ namespace DaggerfallWorkshop
             set { SetState(value); }
         }
 
+        public float Cooldown
+        {
+            get { return cooldown; }
+            set { cooldown = value; }
+        }
+
         public bool IsMoving
         {
             get { return (currentState == ActionState.PlayingForward || currentState == ActionState.PlayingReverse); }
@@ -117,7 +127,7 @@ namespace DaggerfallWorkshop
         {DFBlock.RdbActionFlags.NegativeZ,  new ActionDelegate(Move)},
         {DFBlock.RdbActionFlags.PositiveY,  new ActionDelegate(Move)},
         {DFBlock.RdbActionFlags.NegativeY,  new ActionDelegate(Move)},
-        {DFBlock.RdbActionFlags.CastSpell,  new ActionDelegate(Move)},
+        {DFBlock.RdbActionFlags.CastSpell,  new ActionDelegate(CastSpell)},
         {DFBlock.RdbActionFlags.ShowText,   new ActionDelegate(ShowText)},
         {DFBlock.RdbActionFlags.ShowTextWithInput,   new ActionDelegate(ShowTextWithInput)},
         {DFBlock.RdbActionFlags.Teleport,   new ActionDelegate(Teleport)},
@@ -133,6 +143,8 @@ namespace DaggerfallWorkshop
         {DFBlock.RdbActionFlags.Poison,     new ActionDelegate(Poison)},
         {DFBlock.RdbActionFlags.DrainMagicka, new ActionDelegate(DrainMagicka)},
         {DFBlock.RdbActionFlags.Activate,   new ActionDelegate(Activate)},
+        {DFBlock.RdbActionFlags.DoorText, new ActionDelegate(DoorText)},
+        {DFBlock.RdbActionFlags.SetGlobalVar, new ActionDelegate(SetGlobalVar)},
         };
 
         public enum TriggerTypes
@@ -161,7 +173,6 @@ namespace DaggerfallWorkshop
 
             if (IsPlaying())
                 return;
-
 
             //assume actions triggered by other action objects are always valid, 
             //otherwise make sure trigger type is valid for this action
@@ -245,7 +256,10 @@ namespace DaggerfallWorkshop
                 ActivateNext();
 
             if (PlaySound && Index > 0 && audioSource)
+            {
+                audioSource.volume = DaggerfallUnity.Settings.SoundVolume;
                 audioSource.Play();
+            }
 
             //stop if failed to get valid delegate from lookup - ideally this check should be done before playing
             //sound & activating next, but for testing purposes is done after
@@ -318,14 +332,14 @@ namespace DaggerfallWorkshop
             Hashtable rotateParams = __ExternalAssets.iTween.Hash(
                  "amount", new Vector3(ActionRotation.x / 360f, ActionRotation.y / 360f, ActionRotation.z / 360f),
                 "space", ActionSpace,
-                "time", Duration,
+                "time", duration,
                  "easetype", __ExternalAssets.iTween.EaseType.linear,
                 "oncomplete", "SetState",
                 "oncompleteparams", ActionState.End);
 
             Hashtable moveParams = __ExternalAssets.iTween.Hash(
                 "position", StartingPosition + ActionTranslation,
-                "time", Duration,
+                "time", duration,
                 "easetype", __ExternalAssets.iTween.EaseType.linear,
                 "oncomplete", "SetState",
                 "oncompleteparams", ActionState.End);
@@ -341,14 +355,14 @@ namespace DaggerfallWorkshop
             Hashtable rotateParams = __ExternalAssets.iTween.Hash(
                  "amount", new Vector3(-ActionRotation.x / 360f, -ActionRotation.y / 360f, -ActionRotation.z / 360f),
                 "space", ActionSpace,
-                "time", Duration,
+                "time", duration,
                  "easetype", __ExternalAssets.iTween.EaseType.linear,
                 "oncomplete", "SetState",
                 "oncompleteparams", ActionState.Start);
 
             Hashtable moveParams = __ExternalAssets.iTween.Hash(
                 "position", startingPosition,
-                "time", Duration,
+                "time", duration,
                 "easetype", __ExternalAssets.iTween.EaseType.linear,
                 "oncomplete", "SetState",
                 "oncompleteparams", ActionState.Start);
@@ -436,11 +450,41 @@ namespace DaggerfallWorkshop
         /// 9
         /// Creates spell. Use Action's index to get the spell by index from Spells.STD
         /// </summary>
-        /// <param name="obj"></param>
+        /// <param name="triggerObj"></param>
         /// <param name="thisAction"></param>
         public static void CastSpell(GameObject triggerObj, DaggerfallAction thisAction)
         {
-            //Debug.Log("Action Type 9: CastSpell");
+            thisAction.Cooldown -= 45.454546f; // Approximates classic based on observation
+            if (thisAction.Cooldown <= 0)
+            {
+                SpellRecord.SpellRecordData spell;
+                if (GameManager.Instance.EntityEffectBroker.GetClassicSpellRecord(thisAction.Index, out spell))
+                {
+                    // Create effect bundle settings from classic spell
+                    EffectBundleSettings bundleSettings;
+                    if (GameManager.Instance.EntityEffectBroker.ClassicSpellRecordDataToEffectBundleSettings(spell, BundleTypes.Spell, out bundleSettings))
+                    {
+                        if (bundleSettings.TargetType == TargetTypes.CasterOnly)
+                        {
+                            // Spell is readied on player for free
+                            GameManager.Instance.PlayerEffectManager.SetReadySpell(thisAction.Index, true);
+                        }
+                        else
+                        {
+                            // Spell is fired at player, at strength of player level, from triggering object
+                            DaggerfallMissile missile = GameManager.Instance.PlayerEffectManager.InstantiateSpellMissile(bundleSettings.ElementType);
+                            missile.Payload = new EntityEffectBundle(bundleSettings, GameManager.Instance.PlayerEntityBehaviour);
+                            Vector3 customAimPosition = thisAction.transform.position;
+                            customAimPosition.y += 40 * MeshReader.GlobalScale;
+                            missile.CustomAimPosition = customAimPosition;
+                            missile.CustomAimDirection = Vector3.Normalize(GameManager.Instance.PlayerObject.transform.position - thisAction.transform.position);
+                        }
+                    }
+                }
+
+                //Reset cooldown
+                thisAction.Cooldown = 1000;
+            }
         }
 
         /// <summary>
@@ -475,15 +519,11 @@ namespace DaggerfallWorkshop
             {
                 Debug.LogError(string.Format("Error: invalid key: {0} for action type 12, couldn't get answer(s)", textID));//todo - display error message
             }
-            DaggerfallInputMessageBox inputBox = new DaggerfallInputMessageBox(DaggerfallWorkshop.Game.DaggerfallUI.UIManager, textID, 20, "\t> ", false, null);
+            DaggerfallInputMessageBox inputBox = new DaggerfallInputMessageBox(DaggerfallWorkshop.Game.DaggerfallUI.UIManager, textID, 20, "\t> ", false, true, null);
             inputBox.ParentPanel.BackgroundColor = Color.clear;
             inputBox.OnGotUserInput += thisAction.UserInputHandler;
             inputBox.Show();
         }
-
-
-
-
 
         /// <summary>
         /// 14
@@ -506,6 +546,7 @@ namespace DaggerfallWorkshop
                 DaggerfallUnity.LogMessage("Failed to get Player or Player entity", true);
                 return;
             }
+            GameManager.Instance.PlayerMotor.FreezeMotor = 0.5f;
             playerObject.transform.position = thisAction.NextObject.transform.position;
             playerObject.transform.rotation = thisAction.NextObject.transform.rotation;
         }
@@ -549,19 +590,42 @@ namespace DaggerfallWorkshop
         /// </summary>
         public static void OpenDoor(GameObject triggerObj, DaggerfallAction thisAction)
         {
+            // Try regular action door
             DaggerfallActionDoor door;
-            if (!GetDoor(thisAction.gameObject, out door))
-                DaggerfallUnity.LogMessage(string.Format("No DaggerfallActionDoor component found"), true);
-            else
+            if (GetDoor(thisAction.gameObject, out door))
             {
                 if (door.IsOpen)
+                {
                     return;
+                }
                 else
                 {
                     door.CurrentLockValue = 0;
                     door.ToggleDoor();
+                    return;
                 }
             }
+
+            // Try special action door
+            if (thisAction != null && thisAction.gameObject)
+            {
+                DaggerfallActionDoorSpecial specialDoor = thisAction.gameObject.GetComponent<DaggerfallActionDoorSpecial>();
+                if (specialDoor)
+                {
+                    if (specialDoor.IsOpen)
+                    {
+                        return;
+                    }
+                    else
+                    {
+                        specialDoor.ToggleDoor();
+                        return;
+                    }
+                }
+            }
+
+            // Log error
+            DaggerfallUnity.LogMessage(string.Format("No DaggerfallActionDoor or DaggerfallActionDoorSpecial component found"), true);
         }
 
 
@@ -571,10 +635,10 @@ namespace DaggerfallWorkshop
         /// </summary>
         public static void CloseDoor(GameObject triggerObj, DaggerfallAction thisAction)
         {
-
+            // Try regular action door
             DaggerfallActionDoor door;
             if (!GetDoor(thisAction.gameObject, out door))
-                DaggerfallUnity.LogMessage(string.Format("No DaggerfallActionDoor component found"), true);
+                DaggerfallUnity.LogMessage(string.Format("No DaggerfallActionDoor or DaggerfallActionDoorSpecial component found"), true);
             else
             {
                 if (!door.IsOpen)
@@ -583,8 +647,22 @@ namespace DaggerfallWorkshop
                 {
                     door.ToggleDoor();
                     door.CurrentLockValue = door.StartingLockValue;
+                    return;
                 }
 
+            }
+
+            // Try special action door
+            if (thisAction != null && thisAction.gameObject)
+            {
+                DaggerfallActionDoorSpecial specialDoor = thisAction.gameObject.GetComponent<DaggerfallActionDoorSpecial>();
+                if (specialDoor)
+                {
+                    if (specialDoor.IsClosed)
+                        return;
+                    else
+                        specialDoor.ToggleDoor();
+                }
             }
 
         }
@@ -682,7 +760,8 @@ namespace DaggerfallWorkshop
         }
 
 
-        // <summary>
+        /// <summary>
+        /// 30
         /// Just activates next object in chain.
         /// </summary>
         public static void Activate(GameObject triggerObj, DaggerfallAction thisAction)
@@ -690,7 +769,79 @@ namespace DaggerfallWorkshop
             return;
         }
 
+        /// <summary>
+        /// 31
+        /// Sets global variable in quest system.
+        /// </summary>
+        public static void SetGlobalVar(GameObject triggerObj, DaggerfallAction thisAction)
+        {
+            // Global variable index stored in action axis value
+            GameManager.Instance.PlayerEntity.GlobalVars.SetGlobalVar(thisAction.ActionAxisRawValue, true);
+            Debug.LogFormat("Action set global variable #{0}", thisAction.ActionAxisRawValue);
+        }
 
+        /// <summary>
+        /// 32
+        /// Shows text at the top of the screen when player clicks on associated door in info mode.
+        /// </summary>
+        public static void DoorText(GameObject triggerObj, DaggerfallAction thisAction)
+        {
+            // The way that classic handles this action has some problems. The text is only displayed
+            // if the door is clicked in info mode, so it can easily be missed, and if clicked in info mode
+            // the trespassing check isn't run but the door is still opened, making it an exploit.
+            // For DF Unity, we're showing the text on the first click of the door, and opening the door
+            // and running the trespassing check from the second click onward, all regardless of interaction mode.
+
+            int DoorTextID = TYPE_99_TEXT_INDEX + thisAction.Index;
+
+            // Patch some textID lookups.
+            switch (DoorTextID)
+            {
+                case 7700:  // action.Index was 0.
+                    thisAction.ActionEnabled = true; // This means skip over trying to display the message and proceed to the trespassing check.
+                                                     // DaggerfallActionDoor will also proceed with opening the door even on first activation.
+                    break;
+                case 7701:
+                case 7702:
+                case 7703:
+                case 7704:
+                    {
+                        DoorTextID = 7705; // All of these are the same except that only 7705 correctly has "allowed" instead of "allow"
+                        break;
+                    }
+                case 7706:  // Doesn't exist. This is on a door in Castle Wayrest to a room with some potions, bookshelves, weighting scales and a telescope.
+                case 7711:  // Doesn't exist. Found on door to kitchen in Wayrest dungeon.
+                case 7712:  // Doesn't exist. Found on door to storage room in Wayrest dungeon kitchen.
+                case 7715:  // Doesn't exist. Found on doors in back of Orsinium throne room.
+                case 7717:  // "A strong, orcish voice in the back of the hall snarls 'All who enter must face the trial by arms.'" Incorrectly located on a door to an armory room in Wayrest dungeon.
+                case 7719:  // Doesn't exist. This is on the doors to a room near the start of the Orsinium dungeon area with a long table lined with chairs and a fireplace.
+                    {
+                        thisAction.ActionEnabled = true;
+                        break;
+                    }
+            }
+
+            if (thisAction.activationCount == 1 && DoorTextID != 7700 && !thisAction.ActionEnabled)
+            {
+                TextFile.Token[] tokens = DaggerfallUnity.Instance.TextProvider.GetRSCTokens(DoorTextID);
+                if (tokens != null)
+                {
+                    DaggerfallUI.AddHUDText(tokens, 2.0f);
+                }
+                else
+                {
+                    throw new System.Exception(string.Format("DaggerfallAction: Bad DoorTextID requested: {0}.", DoorTextID));
+                }
+            }
+            else
+            {
+                // Classic seems to only check whether this value is greater than 5, as a trespassing check
+                if (thisAction.ActionAxisRawValue > 5)
+                {
+                    GameManager.Instance.MakeEnemiesHostile();
+                }
+            }
+        }
 
         #endregion
     }

@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -137,8 +137,12 @@ namespace DaggerfallWorkshop.Game.UserInterface
                 Position = newPosition;
             }
 
-            // Raise flag to draw tooltip
-            drawToolTip = true;
+            // Check if mouse position is in parent's rectangle (to prevent tooltips out of panel's rectangle to be displayed)
+            if (Parent != null && (Parent.Rectangle.Contains(Parent.MousePosition)))
+            {
+                // Raise flag to draw tooltip
+                drawToolTip = true;
+            }
         }
 
         public override void Draw()
@@ -149,6 +153,11 @@ namespace DaggerfallWorkshop.Game.UserInterface
             if (drawToolTip)
             {
                 base.Draw();
+
+                // Set render area for tooltip to whole screen (material might have been changed by other component, i.e. _ScissorRect might have been set to a subarea of screen (e.g. by TextLabel class))
+                Material material = font.GetMaterial();
+                Vector4 scissorRect = new Vector4(0, 1, 0, 1);
+                material.SetVector("_ScissorRect", scissorRect);
 
                 // Determine text position
                 Rect rect = Rectangle;
@@ -195,6 +204,8 @@ namespace DaggerfallWorkshop.Game.UserInterface
                 return;
 
             // Split into rows based on \r escape character
+            // Text read from plain-text files will become \\r so need to replace this first
+            text = text.Replace("\\r", "\r");
             textRows = text.Split('\r');
 
             // Set text we just processed

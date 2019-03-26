@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -8,9 +8,6 @@
 // 
 // Notes:
 //
-
-using UnityEngine;
-using System.Collections;
 
 namespace DaggerfallWorkshop
 {
@@ -67,6 +64,17 @@ namespace DaggerfallWorkshop
         public static int random_range(int min, int max)
         {
             return (int)rand() % (max - min) + min;
+        }
+
+        /// <summary>
+        /// Generates a random number between min and max (inclusive).
+        /// </summary>
+        /// <param name="min">Minimum number.</param>
+        /// <param name="max">Maximum number (inclusive).</param>
+        /// <returns>Random number between min and max - 1.</returns>
+        public static int random_range_inclusive(int min, int max)
+        {
+            return (int)rand() % (max - min + 1) + min;
         }
 
         /// <summary>

@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -11,10 +11,10 @@
 
 #region Using Statements
 using System;
-using System.Text;
 using System.Collections.Generic;
 using System.IO;
 using DaggerfallConnect.Utility;
+using DaggerfallWorkshop.Utility.AssetInjection;
 #endregion
 
 namespace DaggerfallConnect.Arena2
@@ -49,7 +49,7 @@ namespace DaggerfallConnect.Arena2
         /// <summary>
         /// Name to index lookup dictionary.
         /// </summary>
-        private Dictionary<String, int> blockNameLookup = new Dictionary<String, int>();
+        private readonly Dictionary<String, int> blockNameLookup = new Dictionary<String, int>();
 
         #endregion
 
@@ -578,8 +578,11 @@ namespace DaggerfallConnect.Arena2
             for (int i = 0; i < 32; i++)
             {
                 blocks[block].DFBlock.RmbBlock.FldHeader.BuildingDataList[i].NameSeed = reader.ReadUInt16();
-                blocks[block].DFBlock.RmbBlock.FldHeader.BuildingDataList[i].NullValue1 = reader.ReadUInt64();
-                blocks[block].DFBlock.RmbBlock.FldHeader.BuildingDataList[i].NullValue2 = reader.ReadUInt64();
+                blocks[block].DFBlock.RmbBlock.FldHeader.BuildingDataList[i].ServiceTimeLimit = reader.ReadUInt32();
+                blocks[block].DFBlock.RmbBlock.FldHeader.BuildingDataList[i].Unknown = reader.ReadUInt16();
+                blocks[block].DFBlock.RmbBlock.FldHeader.BuildingDataList[i].Unknown2 = reader.ReadUInt16();
+                blocks[block].DFBlock.RmbBlock.FldHeader.BuildingDataList[i].Unknown3 = reader.ReadUInt32();
+                blocks[block].DFBlock.RmbBlock.FldHeader.BuildingDataList[i].Unknown4 = reader.ReadUInt32();
                 blocks[block].DFBlock.RmbBlock.FldHeader.BuildingDataList[i].FactionId = reader.ReadUInt16();
                 blocks[block].DFBlock.RmbBlock.FldHeader.BuildingDataList[i].Sector = reader.ReadInt16();
                 blocks[block].DFBlock.RmbBlock.FldHeader.BuildingDataList[i].LocationId = reader.ReadUInt16();
@@ -588,7 +591,12 @@ namespace DaggerfallConnect.Arena2
             }
 
             // Section2 unknown data
-            blocks[block].DFBlock.RmbBlock.FldHeader.Section2UnknownData = reader.ReadBytes(128);
+            //blocks[block].DFBlock.RmbBlock.FldHeader.Section2UnknownData = reader.ReadBytes(128);
+            blocks[block].DFBlock.RmbBlock.FldHeader.Section2UnknownData = new UInt32[32];
+            for (int i = 0; i < 32; i++)
+            {
+                blocks[block].DFBlock.RmbBlock.FldHeader.Section2UnknownData[i] = reader.ReadUInt32();
+            }
 
             // Block data sizes
             blocks[block].DFBlock.RmbBlock.FldHeader.BlockDataSizes = new Int32[32];
@@ -636,8 +644,8 @@ namespace DaggerfallConnect.Arena2
                     // Store data
                     blocks[block].DFBlock.RmbBlock.FldHeader.GroundData.GroundTiles[x, y].TileBitfield = bitfield;
                     blocks[block].DFBlock.RmbBlock.FldHeader.GroundData.GroundTiles[x, y].TextureRecord = bitfield & 0x3f;
-                    blocks[block].DFBlock.RmbBlock.FldHeader.GroundData.GroundTiles[x, y].IsRotated = ((bitfield & 0x40) == 0x40) ? true : false;
-                    blocks[block].DFBlock.RmbBlock.FldHeader.GroundData.GroundTiles[x, y].IsFlipped = ((bitfield & 0x80) == 0x80) ? true : false;
+                    blocks[block].DFBlock.RmbBlock.FldHeader.GroundData.GroundTiles[x, y].IsRotated = ((bitfield & 0x40) == 0x40);
+                    blocks[block].DFBlock.RmbBlock.FldHeader.GroundData.GroundTiles[x, y].IsFlipped = ((bitfield & 0x80) == 0x80);
                 }
             }
         }
@@ -689,16 +697,29 @@ namespace DaggerfallConnect.Arena2
             int recordCount = blocks[block].DFBlock.RmbBlock.FldHeader.NumBlockDataRecords;
             blocks[block].DFBlock.RmbBlock.SubRecords = new DFBlock.RmbSubRecord[recordCount];
             long position = reader.BaseStream.Position;
+            BuildingReplacementData buildingReplacementData;
             for (int i = 0; i < recordCount; i++)
             {
-                // Copy XZ position and Y rotation into subrecord data for convenience
-                blocks[block].DFBlock.RmbBlock.SubRecords[i].XPos = blocks[block].DFBlock.RmbBlock.FldHeader.BlockPositions[i].XPos;
-                blocks[block].DFBlock.RmbBlock.SubRecords[i].ZPos = blocks[block].DFBlock.RmbBlock.FldHeader.BlockPositions[i].ZPos;
-                blocks[block].DFBlock.RmbBlock.SubRecords[i].YRotation = blocks[block].DFBlock.RmbBlock.FldHeader.BlockPositions[i].YRotation;
+                // Check for replacement building data and use it if found
+                if (WorldDataReplacement.GetBuildingReplacementData(blocks[block].Name, block, i, out buildingReplacementData))
+                {
+                    blocks[block].DFBlock.RmbBlock.SubRecords[i] = buildingReplacementData.RmbSubRecord;
+                    blocks[block].DFBlock.RmbBlock.FldHeader.BuildingDataList[i].FactionId = buildingReplacementData.FactionId;
+                    blocks[block].DFBlock.RmbBlock.FldHeader.BuildingDataList[i].BuildingType = (DFLocation.BuildingTypes)buildingReplacementData.BuildingType;
+                    if (buildingReplacementData.AutoMapData != null && buildingReplacementData.AutoMapData.Length == 64 * 64)
+                        blocks[block].DFBlock.RmbBlock.FldHeader.AutoMapData = buildingReplacementData.AutoMapData;
+                }
+                else
+                {
+                    // Copy XZ position and Y rotation into subrecord data for convenience
+                    blocks[block].DFBlock.RmbBlock.SubRecords[i].XPos = blocks[block].DFBlock.RmbBlock.FldHeader.BlockPositions[i].XPos;
+                    blocks[block].DFBlock.RmbBlock.SubRecords[i].ZPos = blocks[block].DFBlock.RmbBlock.FldHeader.BlockPositions[i].ZPos;
+                    blocks[block].DFBlock.RmbBlock.SubRecords[i].YRotation = blocks[block].DFBlock.RmbBlock.FldHeader.BlockPositions[i].YRotation;
 
-                // Read outside and inside block data
-                ReadRmbBlockSubRecord(reader, ref blocks[block].DFBlock.RmbBlock.SubRecords[i].Exterior);
-                ReadRmbBlockSubRecord(reader, ref blocks[block].DFBlock.RmbBlock.SubRecords[i].Interior);
+                    // Read outside and inside block data
+                    ReadRmbBlockSubRecord(reader, ref blocks[block].DFBlock.RmbBlock.SubRecords[i].Exterior);
+                    ReadRmbBlockSubRecord(reader, ref blocks[block].DFBlock.RmbBlock.SubRecords[i].Interior);
+                }
 
                 // Offset to next position (this ignores padding byte and ensures block reading is correctly stepped)
                 position += blocks[block].DFBlock.RmbBlock.FldHeader.BlockDataSizes[i];
@@ -777,14 +798,15 @@ namespace DaggerfallConnect.Arena2
             blockData.BlockPeopleRecords = new DFBlock.RmbBlockPeopleRecord[numPeopleRecords];
             for (int i = 0; i < numPeopleRecords; i++)
             {
+                blockData.BlockPeopleRecords[i].Position = reader.BaseStream.Position;
                 blockData.BlockPeopleRecords[i].XPos = reader.ReadInt32();
                 blockData.BlockPeopleRecords[i].YPos = reader.ReadInt32();
                 blockData.BlockPeopleRecords[i].ZPos = reader.ReadInt32();
                 blockData.BlockPeopleRecords[i].TextureBitfield = reader.ReadUInt16();
                 blockData.BlockPeopleRecords[i].TextureArchive = blockData.BlockPeopleRecords[i].TextureBitfield >> 7;
                 blockData.BlockPeopleRecords[i].TextureRecord = blockData.BlockPeopleRecords[i].TextureBitfield & 0x7f;
-                blockData.BlockPeopleRecords[i].NpcType = reader.ReadInt16();
-                blockData.BlockPeopleRecords[i].Unknown1 = reader.ReadByte();
+                blockData.BlockPeopleRecords[i].FactionID = reader.ReadInt16();
+                blockData.BlockPeopleRecords[i].Flags = reader.ReadByte();
             }
 
             // Door records
@@ -792,13 +814,14 @@ namespace DaggerfallConnect.Arena2
             blockData.BlockDoorRecords = new DFBlock.RmbBlockDoorRecord[numDoorRecords];
             for (int i = 0; i < numDoorRecords; i++)
             {
-                blockData.BlockDoorRecords[i].This = (Int32)reader.BaseStream.Position;
+                blockData.BlockDoorRecords[i].Position = (Int32)reader.BaseStream.Position;
                 blockData.BlockDoorRecords[i].XPos = reader.ReadInt32();
                 blockData.BlockDoorRecords[i].YPos = reader.ReadInt32();
                 blockData.BlockDoorRecords[i].ZPos = reader.ReadInt32();
                 blockData.BlockDoorRecords[i].YRotation = reader.ReadInt16();
                 blockData.BlockDoorRecords[i].OpenRotation = reader.ReadInt16();
-                blockData.BlockDoorRecords[i].Unknown3 = reader.ReadInt16();
+                blockData.BlockDoorRecords[i].DoorModelIndex = reader.ReadByte();
+                blockData.BlockDoorRecords[i].Unknown = reader.ReadByte();
                 blockData.BlockDoorRecords[i].NullValue1 = reader.ReadByte();
             }
         }
@@ -849,14 +872,15 @@ namespace DaggerfallConnect.Arena2
             // Read all flat object records into array
             for (int i = 0; i < recordsOut.Length; i++)
             {
+                recordsOut[i].Position = reader.BaseStream.Position;
                 recordsOut[i].XPos = reader.ReadInt32();
                 recordsOut[i].YPos = reader.ReadInt32();
                 recordsOut[i].ZPos = reader.ReadInt32();
                 recordsOut[i].TextureBitfield = reader.ReadUInt16();
                 recordsOut[i].TextureArchive = recordsOut[i].TextureBitfield >> 7;
                 recordsOut[i].TextureRecord = recordsOut[i].TextureBitfield & 0x7f;
-                recordsOut[i].Unknown1 = reader.ReadInt16();
-                recordsOut[i].Unknown2 = reader.ReadByte();
+                recordsOut[i].FactionID = reader.ReadInt16();
+                recordsOut[i].Flags = reader.ReadByte();
             }
         }
 
@@ -924,7 +948,7 @@ namespace DaggerfallConnect.Arena2
             {
                 // Read object data
                 DFBlock.RdbUnknownObject obj = new DFBlock.RdbUnknownObject();
-                obj.This = (Int32)reader.BaseStream.Position;
+                obj.Position = (Int32)reader.BaseStream.Position;
                 obj.Next = reader.ReadInt32();
                 obj.Index = reader.ReadInt16();
                 obj.UnknownOffset = (UInt32)reader.ReadInt32();
@@ -1024,7 +1048,7 @@ namespace DaggerfallConnect.Arena2
             while (true)
             {
                 // Read object data
-                objectRoot.RdbObjects[index].This = (Int32)reader.BaseStream.Position;
+                objectRoot.RdbObjects[index].Position = (Int32)reader.BaseStream.Position;
                 objectRoot.RdbObjects[index].Next = reader.ReadInt32();
                 objectRoot.RdbObjects[index].Previous = reader.ReadInt32();
                 objectRoot.RdbObjects[index].Index = index;
@@ -1111,12 +1135,12 @@ namespace DaggerfallConnect.Arena2
             int index = 0;
             foreach (DFBlock.RdbObject obj in rdbObjects)
             {
-                if (obj.This ==
+                if (obj.Position ==
                     rdbObject.Resources.ModelResource.ActionResource.NextObjectOffset)
                 {
                     // Set target and and parent indices
                     rdbObject.Resources.ModelResource.ActionResource.NextObjectIndex = index;
-                    rdbObjects[index].Resources.ModelResource.ActionResource.PreviousObjectOffset = rdbObject.This;
+                    rdbObjects[index].Resources.ModelResource.ActionResource.PreviousObjectOffset = rdbObject.Position;
                     break;
                 }
                 index++;
@@ -1129,14 +1153,14 @@ namespace DaggerfallConnect.Arena2
             reader.BaseStream.Position = rdbObject.ResourceOffset;
 
             // Read flat data
+            rdbObject.Resources.FlatResource.Position = reader.BaseStream.Position;
             rdbObject.Resources.FlatResource.TextureBitfield = reader.ReadUInt16();
             rdbObject.Resources.FlatResource.TextureArchive = rdbObject.Resources.FlatResource.TextureBitfield >> 7;
             rdbObject.Resources.FlatResource.TextureRecord = rdbObject.Resources.FlatResource.TextureBitfield & 0x7f;
-            rdbObject.Resources.FlatResource.TriggerFlag = reader.ReadUInt16();
+            rdbObject.Resources.FlatResource.Flags = reader.ReadUInt16();
             rdbObject.Resources.FlatResource.Magnitude = reader.ReadByte();
             rdbObject.Resources.FlatResource.SoundIndex = reader.ReadByte();
-            rdbObject.Resources.FlatResource.Gender = (DFBlock.RdbFlatGenders)rdbObject.Resources.FlatResource.TriggerFlag;
-            rdbObject.Resources.FlatResource.FactionMobileId = BitConverter.ToUInt16(new byte[] { rdbObject.Resources.FlatResource.Magnitude, rdbObject.Resources.FlatResource.SoundIndex }, 0);
+            rdbObject.Resources.FlatResource.FactionOrMobileId = BitConverter.ToUInt16(new byte[] { rdbObject.Resources.FlatResource.Magnitude, rdbObject.Resources.FlatResource.SoundIndex }, 0);
             rdbObject.Resources.FlatResource.NextObjectOffset = reader.ReadInt32();
             rdbObject.Resources.FlatResource.Action = reader.ReadByte();
         }

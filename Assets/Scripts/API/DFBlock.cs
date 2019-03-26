@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -10,8 +10,8 @@
 //
 
 #region Using Statements
+using FullSerializer;
 using System;
-using System.Text;
 #endregion
 
 namespace DaggerfallConnect
@@ -119,6 +119,13 @@ namespace DaggerfallConnect
             Passive = 99,
         }
 
+        public enum EnemyGenders
+        {
+            Unspecified = 0,
+            Female = 1,
+            Male = 2,
+        }
+
         #endregion
 
         #region RMB Structures
@@ -162,7 +169,8 @@ namespace DaggerfallConnect
             public DFLocation.BuildingData[] BuildingDataList;
 
             /// <summary>Unknown data.</summary>
-            internal Byte[] Section2UnknownData;
+            internal UInt32[] Section2UnknownData;
+            //internal Byte[] Section2UnknownData;
 
             /// <summary>Length of block record data in bytes (array is 32 records long, but only up to numBlockDataRecords have valid data).</summary>
             public Int32[] BlockDataSizes;
@@ -240,6 +248,7 @@ namespace DaggerfallConnect
         /// <summary>
         /// Ground data to draw under a city block, such as ground textures, trees, rocks, etc.
         /// </summary>
+        [fsObject(MemberSerialization = fsMemberSerialization.OptIn)]   // FullSerializer can't do 2D arrays out of the box
         public struct RmbFldGroundData
         {
             /// <summary>Header with unknown data.</summary>
@@ -298,7 +307,7 @@ namespace DaggerfallConnect
             public RmbBlockFlatObjectRecord[] BlockFlatObjectRecords;
 
             /// <summary>Unknown data.</summary>
-            internal RmbBlockSection3Record[] BlockSection3Records;
+            public RmbBlockSection3Record[] BlockSection3Records;
 
             /// <summary>People (NPCs) to position around the block.</summary>
             public RmbBlockPeopleRecord[] BlockPeopleRecords;
@@ -423,6 +432,9 @@ namespace DaggerfallConnect
         /// </summary>
         public struct RmbBlockFlatObjectRecord
         {
+            /// <summary>Position of this record in stream.</summary>
+            public long Position;
+
             /// <summary>X position in 3D space.</summary>
             public Int32 XPos;
 
@@ -441,11 +453,11 @@ namespace DaggerfallConnect
             /// <summary>Texture record from bitfield. Used to determine which texture record to load from archive.</summary>
             public int TextureRecord;
 
-            /// <summary>Unknown.</summary>
-            internal Int16 Unknown1;
+            /// <summary>NPC faction. (for exterior NPCs)</summary>
+            public Int16 FactionID;
 
-            /// <summary>Unknown.</summary>
-            internal Byte Unknown2;
+            /// <summary> NPC flags. (Same as RmbBlockPeopleRecord, but for exterior NPCs)</summary>
+            public Byte Flags;
         }
 
         /// <summary>
@@ -453,7 +465,7 @@ namespace DaggerfallConnect
         /// Only appears in interiors and forms a grid-like pattern over floor.
         /// Most likely path-finding waypoints.
         /// </summary>
-        internal struct RmbBlockSection3Record
+        public struct RmbBlockSection3Record
         {
             /// <summary>X position in 3D space.</summary>
             public Int32 XPos;
@@ -479,6 +491,9 @@ namespace DaggerfallConnect
         /// </summary>
         public struct RmbBlockPeopleRecord
         {
+            /// <summary>Position of this record in stream.</summary>
+            public long Position;
+
             /// <summary>X position in 3D space.</summary>
             public Int32 XPos;
 
@@ -497,11 +512,14 @@ namespace DaggerfallConnect
             /// <summary>Texture record from bitfield. Used to determine which texture record to load from archive.</summary>
             public int TextureRecord;
 
-            /// <summary>NPC type.</summary>
-            public Int16 NpcType;
+            /// <summary>NPC faction.</summary>
+            public Int16 FactionID;
 
-            /// <summary>Unknown.</summary>
-            internal Byte Unknown1;
+            /// <summary>
+            /// NPC flags. Known so far:
+            /// 00X00000    : X=0 is male, X=1 is female
+            /// </summary>
+            public Byte Flags;
         }
 
         /// <summary>
@@ -510,7 +528,7 @@ namespace DaggerfallConnect
         public struct RmbBlockDoorRecord
         {
             /// <summary>Offset of this object from start of RMB record. Not required unless you are extending the block reader.</summary>
-            internal Int32 This;
+            public Int32 Position;
 
             /// <summary>X position in 3D space.</summary>
             public Int32 XPos;
@@ -527,8 +545,11 @@ namespace DaggerfallConnect
             /// <summary>Angle to rotate door into open position.</summary>
             public Int16 OpenRotation;
 
+            /// <summary>Model index to use for door as offset from base door ID.</summary>
+            internal Byte DoorModelIndex;
+
             /// <summary>Unknown.</summary>
-            internal Int16 Unknown3;
+            internal Byte Unknown;
 
             /// <summary>Unknown.</summary>
             internal Byte NullValue1;
@@ -560,6 +581,12 @@ namespace DaggerfallConnect
         {
             /// <summary>No gender specified.</summary>
             Unspecified = 0,
+
+            /// <summary>Mobile is female</summary>
+            FemaleMobile = 1,
+
+            /// <summary>Mobile is male</summary>
+            MaleMobile = 2,
 
             /// <summary>NPC is male.</summary>
             Male = 0x1200,
@@ -685,8 +712,8 @@ namespace DaggerfallConnect
             ///<summary>30 Activate </summary>
             Activate = 0x1E,
 
-            ///<summary>31 Unknown - only on 2 objects, Main quest related </summary>
-            Unknown31 = 0x1F,
+            ///<summary>Sets a global variable in quest system - only used on 2 main quest objects.</summary>
+            SetGlobalVar = 0x1F,
 
             ///<summary>32  Unknown, only on 4 objects </summary>
             Unknown32 = 0x20,
@@ -694,8 +721,9 @@ namespace DaggerfallConnect
             ///<summary>50 Unknown </summary>
             Unknown50 = 0x32,
 
-            ///<summary>99 Unknown - seems to be releated to enemy hostility in special blocks</summary>
-            Unknown99 = 0x63,
+            ///<summary>99 Displays text at the top of the screen when clicked in info mode.
+            ///            Can cause castle guards to go hostile if clicked outside of info mode.</summary>
+            DoorText = 0x63,
 
             ///<summary>100 Unknown, only on 2 objects</summary>
             Unknown100 = 0x64,
@@ -845,7 +873,7 @@ namespace DaggerfallConnect
         public struct RdbUnknownObject
         {
             /// <summary>Offset of this object from start of RDB record. Not required unless you are extending the block reader.</summary>
-            public Int32 This;
+            public Int32 Position;
 
             /// <summary>Offset to next object from start of RDB record. Not required unless you are extending the block reader.</summary>
             public Int32 Next;
@@ -853,7 +881,7 @@ namespace DaggerfallConnect
             /// <summary>Index of this object in the objects array.</summary>
             public Int32 Index;
 
-            /// <summary>Offset to unknown data from start of RDB record. Not required unless you are extending the block reader.</summary>
+            /// <summary>Offset to 23 bytes of unknown data from start of RDB record. Not required unless you are extending the block reader.</summary>
             public UInt32 UnknownOffset;
         }
 
@@ -875,7 +903,7 @@ namespace DaggerfallConnect
         public struct RdbObject
         {
             /// <summary>Offset of this object from start of RDB record. Not required unless you are extending the block reader.</summary>
-            internal Int32 This;
+            internal Int32 Position;
 
             /// <summary>Offset to next object from start of RDB record. Not required unless you are extending the block reader.</summary>
             internal Int32 Next;
@@ -941,7 +969,7 @@ namespace DaggerfallConnect
             /// <summary>Index into ModelReferenceList array.</summary>
             public UInt16 ModelIndex;
 
-            /// <summary>Unknown.</summary>
+            /// <summary>Trigger flag and starting lock for doors.</summary>
             internal UInt32 TriggerFlag_StartingLock;
 
             /// <summary>ID of sound to play when action is executed. Also used for spell & text index.</summary>
@@ -974,6 +1002,9 @@ namespace DaggerfallConnect
         /// </summary>
         public struct RdbFlatResource
         {
+            /// <summary>Position in stream to find this data.</summary>
+            public long Position;
+
             /// <summary>Index of texture compressed to a bitfield.</summary>
             internal UInt16 TextureBitfield;
 
@@ -983,11 +1014,8 @@ namespace DaggerfallConnect
             /// <summary>Texture record from bitfield. Used to determine which texture record to load from archive.</summary>
             public int TextureRecord;
 
-            /// <summary> trigger flag of action flat </summary>
-            public UInt16 TriggerFlag;
-
-            /// <summary>NPC gender (if any).</summary>
-            public RdbFlatGenders Gender;
+            /// <summary>Flags for action, NPC, etc.</summary>
+            public UInt16 Flags;
 
             /// <summary> damage, distance to move etc.</summary>
             public byte Magnitude;
@@ -1000,7 +1028,7 @@ namespace DaggerfallConnect
             /// Range 0-42 is index to monster in MONSTER.BSA.
             /// Range 128-146 is index to humanoid mobile type.
             /// </summary>
-            public UInt16 FactionMobileId;
+            public UInt16 FactionOrMobileId;
 
             /// <summary>Next object in action chain.</summary>
             public Int32 NextObjectOffset;

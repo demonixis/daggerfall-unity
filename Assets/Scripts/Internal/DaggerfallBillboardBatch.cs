@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -55,7 +55,7 @@ namespace DaggerfallWorkshop
         [Range(0, 30)]
         public float FramesPerSecond = 0;
         public bool RandomStartFrame = true;
-        public ShadowCastingMode ShadowCasting = ShadowCastingMode.On;
+        public ShadowCastingMode ShadowCasting = ShadowCastingMode.TwoSided;
         [Range(1, 127)]
         public int RandomWidth = 16;
         [Range(1, 127)]
@@ -176,6 +176,9 @@ namespace DaggerfallWorkshop
             if (archive == currentArchive && !force)
                 return;
 
+            // Get atlas size
+            int size = DaggerfallUnity.Settings.AssetInjection ? 4096 : 2048;
+
             // Get standard atlas material
             // Just going to steal texture and settings
             // TODO: Revise material loading for custom shaders
@@ -185,7 +188,7 @@ namespace DaggerfallWorkshop
                     archive,
                     0,
                     4,
-                    2048,
+                    size,
                     out atlasRects,
                     out atlasIndices,
                     4,

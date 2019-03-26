@@ -1,11 +1,11 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
 // Original Author: Gavin Clayton (interkarma@dfworkshop.net)
-// Contributors:    
-// 
+// Contributors: Numidium
+//
 // Notes:
 //
 
@@ -20,6 +20,7 @@ using DaggerfallConnect.Arena2;
 using DaggerfallWorkshop;
 using DaggerfallWorkshop.Utility;
 using DaggerfallWorkshop.Game.Items;
+using DaggerfallWorkshop.Utility.AssetInjection;
 
 namespace DaggerfallWorkshop.Utility
 {
@@ -35,6 +36,22 @@ namespace DaggerfallWorkshop.Utility
         /// <param name="id">Text resource ID.</param>
         /// <returns>Text resource tokens.</returns>
         TextFile.Token[] GetRSCTokens(int id);
+
+        /// <summary>
+        /// Gets tokens from a randomly selected subrecord.
+        /// </summary>
+        /// <param name="id">Text resource ID.</param>
+        /// <param name="dfRand">Use Daggerfall rand() for random selection.</param>
+        /// <returns>Text resource tokens.</returns>
+        TextFile.Token[] GetRandomTokens(int id, bool dfRand = false);
+
+        /// <summary>
+        /// Gets random string from separated token array.
+        /// Example would be flavour text variants when finding dungeon exterior.
+        /// </summary>
+        /// <param name="id">Text resource ID.</param>
+        /// <returns>String randomly selected from variants.</returns>
+        string GetRandomText(int id);
 
         /// <summary>
         /// Gets name of weapon material type.
@@ -77,7 +94,14 @@ namespace DaggerfallWorkshop.Utility
         /// <param name="stat">Stat.</param>
         /// <returns>Text resource ID.</returns>
         int GetStatDescriptionTextID(DFCareer.Stats stat);
-        
+
+        /// <summary>
+        /// Opens a new book based on the internal Daggerfall "message" field, rather than the direct filename
+        /// </summary>
+        /// <param name="message">The int32 message field that encodes the book's ID</param>
+        /// <returns>True if book opened successfully.</returns>
+        bool OpenBook(int message);
+
         /// <summary>
         /// Opens a new book.
         /// </summary>
@@ -154,9 +178,15 @@ namespace DaggerfallWorkshop.Utility
             get { return GetPageTokens(currentPage); }
         }
 
+        public virtual bool OpenBook(int message)
+        {
+            return OpenBook(BookFile.messageToBookFilename(message));
+        }
+
         public virtual bool OpenBook(string name)
         {
-            if (!bookFile.OpenBook(DaggerfallUnity.Instance.Arena2Path, name))
+            if (!BookReplacement.TryImportBook(name, bookFile) &&
+                !bookFile.OpenBook(DaggerfallUnity.Instance.Arena2Path, name))
                 return false;
 
             isBookOpen = true;
@@ -211,6 +241,60 @@ namespace DaggerfallWorkshop.Utility
                 return null;
 
             return TextFile.ReadTokens(ref buffer, 0, TextFile.Formatting.EndOfRecord);
+        }
+
+        public virtual TextFile.Token[] GetRandomTokens(int id, bool dfRand = false)
+        {
+            TextFile.Token[] sourceTokens = GetRSCTokens(id);
+
+            // Build a list of token subrecords
+            List<TextFile.Token> currentStream = new List<TextFile.Token>();
+            List<TextFile.Token[]> tokenStreams = new List<TextFile.Token[]>();
+            for (int i = 0; i < sourceTokens.Length; i++)
+            {
+                // If we're at end of subrecord then start a new stream
+                if (sourceTokens[i].formatting == TextFile.Formatting.SubrecordSeparator)
+                {
+                    tokenStreams.Add(currentStream.ToArray());
+                    currentStream.Clear();
+                    continue;
+                }
+
+                // Otherwise keep adding to current stream
+                currentStream.Add(sourceTokens[i]);
+            }
+
+            // Complete final stream
+            tokenStreams.Add(currentStream.ToArray());
+
+            // Select a random token stream
+            int index = dfRand ? (int)(DFRandom.rand() % tokenStreams.Count) : UnityEngine.Random.Range(0, tokenStreams.Count);
+
+            // Select the next to last item from the array if the length of the last one is zero
+            index = (tokenStreams[index].Length == 0 ? index - 1 : index);
+
+            return tokenStreams[index];
+        }
+
+        public virtual string GetRandomText(int id)
+        {
+            // Collect text items
+            List<string> textItems = new List<string>();
+            TextFile.Token[] tokens = GetRSCTokens(id);
+            for (int i = 0; i < tokens.Length; i++)
+            {
+                if (tokens[i].formatting == TextFile.Formatting.Text)
+                    textItems.Add(tokens[i].text);
+            }
+
+            // Validate items
+            if (textItems.Count == 0)
+                return string.Empty;
+
+            // Select random text item
+            int index = UnityEngine.Random.Range(0, textItems.Count);
+
+            return textItems[index];
         }
 
         public string GetWeaponMaterialName(WeaponMaterialTypes material)
@@ -347,7 +431,7 @@ namespace DaggerfallWorkshop.Utility
                 case DFCareer.Skills.LongBlade:
                     return "Long Blade";
                 case DFCareer.Skills.HandToHand:
-                    return "Hand To Hand";
+                    return "Hand-to-Hand";
                 case DFCareer.Skills.Axe:
                     return "Axe";
                 case DFCareer.Skills.BluntWeapon:

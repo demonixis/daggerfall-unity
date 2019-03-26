@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -21,7 +21,9 @@ using DaggerfallConnect;
 using DaggerfallConnect.Arena2;
 using DaggerfallConnect.Utility;
 using DaggerfallWorkshop.Utility;
+using DaggerfallWorkshop.Game;
 using DaggerfallWorkshop.Game.Items;
+using DaggerfallWorkshop.Game.Utility;
 
 namespace DaggerfallWorkshop
 {
@@ -48,6 +50,7 @@ namespace DaggerfallWorkshop
         MeshReader meshReader;
         SoundReader soundReader;
         ItemHelper itemHelper;
+        NameHelper nameHelper;
         ITerrainSampler terrainSampler = new DefaultTerrainSampler();
         ITextProvider textProvider = new DefaultTextProvider();
 
@@ -63,6 +66,7 @@ namespace DaggerfallWorkshop
         public int ModelImporter_ModelID = 456;
         public string BlockImporter_BlockName = "MAGEAA01.RMB";
         public string CityImporter_CityName = "Daggerfall/Daggerfall";
+        public string Experimental_CityLayoutName = "Daggerfall/Aldcart";
         public string DungeonImporter_DungeonName = "Daggerfall/Privateer's Hold";
 
         // Performance options
@@ -75,7 +79,6 @@ namespace DaggerfallWorkshop
         public bool Option_AddMeshColliders = true;
         public bool Option_AddNavmeshAgents = true;
         public bool Option_RMBGroundPlane = true;
-        public bool Option_CloseCityGates = false;
 
         // Prefab options
         public bool Option_ImportLightPrefabs = true;
@@ -87,10 +90,14 @@ namespace DaggerfallWorkshop
         public DaggerfallActionDoor Option_InteriorDoorPrefab = null;
         public DaggerfallRMBBlock Option_CityBlockPrefab = null;
         public DaggerfallRDBBlock Option_DungeonBlockPrefab = null;
+        public MobilePersonMotor Option_MobileNPCPrefab = null;
         public bool Option_ImportEnemyPrefabs = true;
         public DaggerfallEnemy Option_EnemyPrefab = null;
         public bool Option_ImportRandomTreasure = true;
         public DaggerfallLoot Option_LootContainerPrefab = null;
+        public GameObject Option_DungeonWaterPrefab = null;
+        public Vector3 Option_DungeonWaterPlaneSize = Vector3.one;
+        public Vector3 Option_DungeonWaterPlaneOffset = Vector3.zero;
 
         // Time and space options
         public bool Option_AutomateTextureSwaps = true;
@@ -151,6 +158,11 @@ namespace DaggerfallWorkshop
         public ItemHelper ItemHelper
         {
             get { return (itemHelper != null) ? itemHelper : itemHelper = new ItemHelper(); }
+        }
+
+        public NameHelper NameHelper
+        {
+            get { return (nameHelper != null) ? nameHelper : nameHelper = new NameHelper(); }
         }
 
         public WorldTime WorldTime
@@ -330,7 +342,7 @@ namespace DaggerfallWorkshop
             string path = TestArena2Exists(Settings.MyDaggerfallPath);
             if (!string.IsNullOrEmpty(path))
             {
-                LogMessage("Trying Daggerfall path " + path, true);
+                //LogMessage("Trying Daggerfall path " + path, true);
                 if (Directory.Exists(path))
                     found = true;
                 else
@@ -349,7 +361,7 @@ namespace DaggerfallWorkshop
             if (found)
             {
                 // If it appears valid set this is as our path
-                LogMessage(string.Format("Testing arena2 path at '{0}'.", path), true);
+                //LogMessage(string.Format("Testing arena2 path at '{0}'.", path), true);
                 if (ValidateArena2Path(path))
                 {
                     Arena2Path = path;
@@ -403,7 +415,7 @@ namespace DaggerfallWorkshop
 
         public static bool FindDaggerfallUnity(out DaggerfallUnity dfUnityOut)
         {
-            dfUnityOut = GameObject.FindObjectOfType(typeof(DaggerfallUnity)) as DaggerfallUnity;
+            dfUnityOut = GameObject.FindObjectOfType<DaggerfallUnity>();
             if (dfUnityOut == null)
             {
                 LogMessage("Could not locate DaggerfallUnity GameObject instance in scene!", true);

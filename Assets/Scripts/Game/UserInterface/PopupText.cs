@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -13,6 +13,7 @@ using System.Diagnostics;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using DaggerfallConnect.Arena2;
 
 namespace DaggerfallWorkshop.Game.UserInterface
 {
@@ -26,7 +27,9 @@ namespace DaggerfallWorkshop.Game.UserInterface
         const int maxRows = 7;
 
         LinkedList<TextLabel> textRows = new LinkedList<TextLabel>();
-        float timer = 0;
+        // Text scrolls away when timer becomes negative
+        float timer;
+        float nextPopDelay = popDelay;
 
         public PopupText()
             : base()
@@ -39,13 +42,19 @@ namespace DaggerfallWorkshop.Game.UserInterface
         {
             base.Update();
 
-            // Remove item from front of list
-            timer += Time.deltaTime;
-            if (timer > popDelay)
+            if (textRows.Count > 0)
             {
-                timer = 0;
-                if (textRows.Count > 0)
+                timer -= Time.deltaTime;
+                if (timer < -popDelay)
+                {
+                    timer += nextPopDelay;
+                    // Remove item from front of list
                     textRows.RemoveFirst();
+
+                    // Reset pop delay to default
+                    nextPopDelay = popDelay;
+                }
+
             }
         }
 
@@ -56,6 +65,8 @@ namespace DaggerfallWorkshop.Game.UserInterface
             // Draw text
             int count = 0;
             float y = 4;
+            if (textRows.Count > 0 && timer < 0)
+                y += (textRows.First.Value.TextHeight + textSpacing) * timer / popDelay;
             int maxCount = (textRows.Count > maxRows) ? maxRows : textRows.Count;
             IEnumerator enumerator = textRows.GetEnumerator();
             while (enumerator.MoveNext())
@@ -72,13 +83,46 @@ namespace DaggerfallWorkshop.Game.UserInterface
             }
         }
 
-        public void AddText(string text)
+        /// <summary>
+        /// Adds text with custom delay.
+        /// Delay affects this item only. Subsequent text items can override delay.
+        /// Delay will return to default after time elapsed.
+        /// </summary>
+        /// <param name="text">Text to display.</param>
+        /// <param name="delayInSeconds">Time in seconds before removing text.</param>
+        public void AddText(string text, float delayInSeconds = popDelay)
         {
+            if (textRows.Count == 0)
+                // set no-scroll delay
+                timer = delayInSeconds;
+            else if (timer >= 0)
+                // retrigger no-scroll delay
+                timer = Mathf.Max(timer, delayInSeconds);
+            else
+                // set next no-scroll delay
+                nextPopDelay = delayInSeconds;
             TextLabel label = DaggerfallUI.AddTextLabel(DaggerfallUI.DefaultFont, Vector2.zero, text);
             label.HorizontalAlignment = HorizontalAlignment.Center;
             label.Parent = Parent;
             textRows.AddLast(label);
-            timer = 0;
+            GameManager.Instance.PlayerEntity.Notebook.AddMessage(text);
+        }
+
+        /// <summary>
+        /// Add text from tokens with a custom delay.
+        /// </summary>
+        /// <param name="tokens">Tokens. One line added per text token.</param>
+        /// <param name="delayInSeconds">Delay per line.</param>
+        public void AddText(TextFile.Token[] tokens, float delayInSeconds)
+        {
+            string[] lines = TextFile.GetTokenLines(tokens);
+            if (lines != null && lines.Length > 0)
+            {
+                foreach(string line in lines)
+                {
+                    AddText(line, delayInSeconds);
+                }
+            }
         }
     }
 }

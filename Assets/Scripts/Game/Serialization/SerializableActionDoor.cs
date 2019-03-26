@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -40,7 +40,16 @@ namespace DaggerfallWorkshop.Game.Serialization
         void Start()
         {
             if (LoadID != 0)
+            {
+                // Using same hack ID fix as SerializableEnemy
+                if (GameManager.Instance.PlayerEnterExit.IsPlayerInsideDungeon && actionDoor)
+                {
+                    while (SaveLoadManager.StateManager.ContainsActionDoor(actionDoor.LoadID))
+                        actionDoor.LoadID++;
+                }
+
                 SaveLoadManager.RegisterSerializableGameObject(this);
+            }
         }
 
         void OnDestroy()
@@ -66,6 +75,7 @@ namespace DaggerfallWorkshop.Game.Serialization
             data.currentLockValue = actionDoor.CurrentLockValue;
             data.currentRotation = transform.rotation;
             data.currentState = actionDoor.CurrentState;
+            data.lockpickFailedSkillLevel = actionDoor.FailedSkillLevel;
 
             if (actionDoor.IsMoving)
             {
@@ -88,6 +98,7 @@ namespace DaggerfallWorkshop.Game.Serialization
                 actionDoor.transform.rotation = data.currentRotation;
                 actionDoor.CurrentState = data.currentState;
                 actionDoor.RestartTween(1 - data.actionPercentage);
+                actionDoor.FailedSkillLevel = data.lockpickFailedSkillLevel;
             }
         }
 

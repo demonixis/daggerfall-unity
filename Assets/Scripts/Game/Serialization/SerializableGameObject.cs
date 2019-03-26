@@ -1,25 +1,46 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
 // Original Author: Gavin Clayton (interkarma@dfworkshop.net)
-// Contributors:    
+// Contributors:    Lypyl (lypyldf@gmail.com), Hazelnut, Numidium
 // 
 // Notes:
 //
 
 using UnityEngine;
+using System.Collections.Generic;
 using DaggerfallConnect;
+using DaggerfallConnect.Arena2;
 using DaggerfallWorkshop.Game.Entity;
 using DaggerfallWorkshop.Game.Items;
+using DaggerfallWorkshop.Game.Weather;
+using DaggerfallWorkshop.Game.Questing;
+using DaggerfallWorkshop.Game.MagicAndEffects;
 using FullSerializer;
 
 namespace DaggerfallWorkshop.Game.Serialization
 {
     /// <summary>
+    /// Enum of stateful game object types that implement ISerializableGameObject.
+    /// To add a new type of stateful game object:
+    ///     - add type name here
+    ///     - add a condition to SerializableStateManager.GetStatefulGameObjectType()
+    ///     - add serializer methods
+    ///     - add to SerializableStateManager.CacheScene() & RestoreCachedScene()
+    /// </summary>
+    public enum StatefulGameObjectTypes
+    {
+        LootContainer,
+        ActionDoor,
+        ActionObject,
+        Enemy,
+    }
+
+    /// <summary>
     /// Implement this interface with any MonoBehaviour-derived class that can save/load state.
-    /// Classes implementing this interface must also register/deregister themselves to SaveLoadManager.
+    /// Classes implementing this interface must also register/deregister themselves to SerializableStateManager.
     /// Only registered objects will be serialized/deserialized. If a deserialized object of the specified
     /// LoadID cannot be found then that object will not have any state restored.
     /// </summary>
@@ -67,6 +88,11 @@ namespace DaggerfallWorkshop.Game.Serialization
         public DungeonData_v1 dungeonData;
         public EnemyData_v1[] enemyData;
         public LootContainerData_v1[] lootContainers;
+        public BankRecordData_v1[] bankAccounts;
+        public BankDeedData_v1 bankDeeds;
+        public FaceDetails[] escortingFaces;
+        public SceneCache_v1 sceneCache;
+        public TravelMapSaveData travelMapData;
     }
 
     #endregion
@@ -90,6 +116,21 @@ namespace DaggerfallWorkshop.Game.Serialization
         public long realTime;
     }
 
+    [fsObject("v1")]
+    public class SceneCache_v1
+    {
+        public SceneCacheEntry_v1[] sceneCache;
+        public string[] permanentScenes;
+    }
+
+    [fsObject("v1")]
+    public class SceneCacheEntry_v1
+    {
+        public string sceneName;
+        public LootContainerData_v1[] lootContainers;
+        public ActionDoorData_v1[] actionDoors;
+    }
+
     #endregion
 
     #region Player Data
@@ -100,6 +141,11 @@ namespace DaggerfallWorkshop.Game.Serialization
         public PlayerPositionData_v1 playerPosition;
         public PlayerEntityData_v1 playerEntity;
         public bool weaponDrawn;
+        public bool usingLeftHand;
+        public TransportModes transportMode;
+        public PlayerPositionData_v1 boardShipPosition;  // Holds the player position from before boarding a ship.
+        public Dictionary<int, GuildMembership_v1> guildMemberships;
+        public List<string> oneTimeQuestsAccepted;
     }
 
     [fsObject("v1")]
@@ -114,21 +160,58 @@ namespace DaggerfallWorkshop.Game.Serialization
         public int level;
         public DaggerfallStats stats;
         public DaggerfallSkills skills;
+        public DaggerfallResistances resistances;
         public int maxHealth;
         public int currentHealth;
         public int currentFatigue;
         public int currentMagicka;
+        public int currentBreath;
+        public short[] skillUses;
+        public uint timeOfLastSkillIncreaseCheck;
+        public uint[] skillsRecentlyRaised;
+        public int startingLevelUpSkillSum;
         public ulong[] equipTable;
         public ItemData_v1[] items;
         public ItemData_v1[] wagonItems;
         public ItemData_v1[] otherItems;
         public int goldPieces;
+        public GlobalVar[] globalVars;
+        public WeaponMaterialTypes minMetalToHit;
+        public int biographyResistDiseaseMod;
+        public int biographyResistMagicMod;
+        public int biographyAvoidHitMod;
+        public int biographyResistPoisonMod;
+        public int biographyFatigueMod;
+        public int biographyReactionMod;
+        public uint timeForThievesGuildLetter;
+        public uint timeForDarkBrotherhoodLetter;
+        public int thievesGuildRequirementTally;
+        public int darkBrotherhoodRequirementTally;
+        public uint timeToBecomeVampireOrWerebeast;
+        public uint lastTimePlayerAteOrDrankAtTavern;
+        public uint timeOfLastSkillTraining;
+        public PlayerEntity.RegionDataRecord[] regionData;
+        public RoomRental_v1[] rentedRooms;
+        public EffectBundleSettings[] spellbook;
+        public EntityEffectManager.EffectBundleSaveData_v1[] instancedEffectBundles;
+        public PlayerEntity.Crimes crimeCommitted;
+        public bool haveShownSurrenderToGuardsDialogue;
+        public ulong lightSourceUID;
+        public short reputationCommoners;
+        public short reputationMerchants;
+        public short reputationNobility;
+        public short reputationScholars;
+        public short reputationUnderworld;
+        public VampireClans previousVampireClan;
     }
 
     [fsObject("v1")]
     public class PlayerPositionData_v1
     {
         public Vector3 position;
+        public Vector3 worldCompensation;
+        public WorldContext worldContext;
+        public int floatingOriginVersion;
         public float yaw;
         public float pitch;
         public bool isCrouching;
@@ -136,9 +219,31 @@ namespace DaggerfallWorkshop.Game.Serialization
         public int worldPosZ;
         public bool insideDungeon;
         public bool insideBuilding;
+        public bool insideOpenShop;
         public string terrainSamplerName;
         public int terrainSamplerVersion;
         public StaticDoor[] exteriorDoors;
+        public PlayerGPS.DiscoveredBuilding buildingDiscoveryData;
+        public WeatherType weather;
+    }
+
+    [fsObject("v1")]
+    public class GuildMembership_v1
+    {
+        public int rank;
+        public int lastRankChange;
+        public int variant;
+        public int flags;
+    }
+
+    [fsObject("v1")]
+    public class RoomRental_v1
+    {
+        public string name;
+        public int mapID;
+        public int buildingKey;
+        public int allocatedBedIndex;
+        public ulong expiryTime;
     }
 
     [fsObject("v1")]
@@ -166,6 +271,22 @@ namespace DaggerfallWorkshop.Game.Serialization
         public ItemGroups itemGroup;
         public int groupIndex;
         public int currentVariant;
+        public bool isQuestItem;
+        public ulong questUID;
+        public Symbol questItemSymbol;
+        public MobileTypes trappedSoulType;
+        public string className;
+        public Poisons poisonType = Poisons.None;
+        public int potionRecipe;
+        public ItemRepairData_v1 repairData;
+    }
+
+    [fsObject("v1")]
+    public class ItemRepairData_v1
+    {
+        public string sceneName;
+        public ulong timeStarted;
+        public int repairTime;
     }
 
     #endregion
@@ -191,6 +312,7 @@ namespace DaggerfallWorkshop.Game.Serialization
         public Quaternion currentRotation;
         public ActionState currentState;
         public float actionPercentage;
+        public short lockpickFailedSkillLevel;
     }
 
     #endregion
@@ -215,8 +337,12 @@ namespace DaggerfallWorkshop.Game.Serialization
     public class EnemyData_v1
     {
         public ulong loadID;
+        public string gameObjectName;
         public Vector3 currentPosition;
+        public Vector3 localPosition;
         public Quaternion currentRotation;
+        public WorldContext worldContext;
+        public Vector3 worldCompensation;
         public bool isDead;
         public int startingHealth;
         public int currentHealth;
@@ -226,6 +352,13 @@ namespace DaggerfallWorkshop.Game.Serialization
         public string careerName;
         public int careerIndex;
         public bool isHostile;
+        public bool hasEncounteredPlayer;
+        public bool questSpawn;
+        public MobileGender mobileGender;
+        public ItemData_v1[] items;
+        public ulong[] equipTable;
+        public QuestResourceBehaviour.QuestResourceSaveData_v1 questResource;
+        public EntityEffectManager.EffectBundleSaveData_v1[] instancedEffectBundles;
     }
 
     #endregion
@@ -236,18 +369,51 @@ namespace DaggerfallWorkshop.Game.Serialization
     public class LootContainerData_v1
     {
         public ulong loadID;
-        //public int worldKey;
-        //public WorldContext worldContext;
+        public WorldContext worldContext;
         public LootContainerTypes containerType;
         public InventoryContainerImages containerImage;
         public Vector3 currentPosition;
-        //public Vector3 localPosition;
+        public Vector3 localPosition;
+        public Vector3 worldCompensation;
         public int textureArchive;
         public int textureRecord;
         public string lootTableKey;
+        public string entityName;
+        public int stockedDate;
         public bool playerOwned;
         public bool customDrop;
+        public bool isEnemyClass;
         public ItemData_v1[] items;
+    }
+
+    #endregion
+
+    #region Faction Data
+
+    [fsObject("v1")]
+    public class FactionData_v1
+    {
+        public Dictionary<int, FactionFile.FactionData> factionDict;
+        public Dictionary<string, int> factionNameToIDDict;
+    }
+
+    [fsObject("v2", typeof(FactionData_v1))]
+    public class FactionData_v2
+    {
+        public Dictionary<int, FactionFile.FactionData> factionDict;
+        public Dictionary<string, int> factionNameToIDDict;
+
+        public FactionData_v2()
+        {
+        }
+
+        public FactionData_v2(FactionData_v1 v1)
+        {
+            FactionFile.RelinkChildren(v1.factionDict);
+            factionDict = v1.factionDict;
+            factionNameToIDDict = v1.factionNameToIDDict;
+            Debug.Log("Migrated FactionData_v1 to FactionData_v2 and relinked children.");
+        }
     }
 
     #endregion
@@ -261,6 +427,48 @@ namespace DaggerfallWorkshop.Game.Serialization
         public string saveName;
         public string characterName;
         public DateAndTime_v1 dateAndTime;
+    }
+
+    #endregion
+
+    #region Bank Data
+
+    [fsObject("v1")]
+    public class BankDeedData_v1
+    {
+        public int shipType;
+        public HouseData_v1[] houses;
+    }
+
+    [fsObject("v1")]
+    public class HouseData_v1
+    {
+        public string location;
+        public int mapID;
+        public int buildingKey;
+        public int regionIndex;
+    }
+
+    [fsObject("v1")]
+    public class BankRecordData_v1
+    {
+        public int accountGold;
+        public int loanTotal;
+        public uint loanDueDate;
+        public int regionIndex;
+        public bool hasDefaulted;
+    }
+
+    [fsObject("v1")]
+    public class TravelMapSaveData
+    {
+        public bool filterDungeons;
+        public bool filterTemples;
+        public bool filterHomes;
+        public bool filterTowns;
+        public bool sleepInn = true;
+        public bool speedCautious = true;
+        public bool travelShip = true;
     }
 
     #endregion

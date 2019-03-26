@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -35,7 +35,7 @@ namespace DaggerfallWorkshop
             DrawDefaultInspector();
             if (GUILayout.Button("Apply Enemy Type"))
             {
-                setupDemoEnemy.ApplyEnemySettings();
+                setupDemoEnemy.ApplyEnemySettings(setupDemoEnemy.EnemyGender);
                 EditorUtility.SetDirty(setupDemoEnemy);
                 EditorUtility.SetDirty(setupDemoEnemy.GetMobileBillboardChild());
             }

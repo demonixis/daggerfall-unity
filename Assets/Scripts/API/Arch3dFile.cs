@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -11,7 +11,6 @@
 
 #region Using Statements
 using System;
-using System.Text;
 using System.Collections.Generic;
 using System.IO;
 using DaggerfallConnect.Utility;
@@ -33,7 +32,7 @@ namespace DaggerfallConnect.Arena2
         private const int subMeshBufferLength = 32;
         private const int planeBufferLength = 512;
         private const int pointBufferLength = 16;
-        private const int indexBufferLength = 16;
+        //private const int indexBufferLength = 16;
         private const int calculatedUVBufferLength = 24;
 
         // Divisors for points and textures
@@ -41,15 +40,24 @@ namespace DaggerfallConnect.Arena2
         private const float textureDivisor = 16.0f;
 
         // Buffer arrays used during decomposition
-        private int[] cornerPointBuffer = new int[cornerBufferLength];
-        private TextureIndex[] uniqueTextureBuffer = new TextureIndex[uniqueTextureBufferLength];
-        private DFSubMeshBuffer[] subMeshBuffer = new DFSubMeshBuffer[subMeshBufferLength];
+        private readonly int[] cornerPointBuffer = new int[cornerBufferLength];
+        private readonly TextureIndex[] uniqueTextureBuffer = new TextureIndex[uniqueTextureBufferLength];
+        private readonly DFSubMeshBuffer[] subMeshBuffer = new DFSubMeshBuffer[subMeshBufferLength];
         private FaceUVTool.DFPurePoint[] calculatedUVBuffer = new FaceUVTool.DFPurePoint[calculatedUVBufferLength];
+
+        // Special arrays containing UV coordinates fixes
+        private static readonly int[] uFirstPillar = { 0, 0, 96 };
+        private static readonly int[] uSecondPillar = { 1952, 0, 96 };
+        private static readonly int[] vEntrancePlane11 = { 2048, 0, -2048 };
+        private static readonly int[] vEntrancePlane12 = { 2048, 0, -1472 };
+        private static readonly int[] vEntrancePlane13 = { 0, 592, 0 };
+        private static readonly int[] uDungeonCorridor989 = { 512, 0, 1024 };
+        private static readonly int[] vDungeonCorridor989 = { 3264, 2864, 704 };
 
         /// <summary>
         /// Index lookup dictionary.
         /// </summary>
-        private Dictionary<UInt32, int> recordIndexLookup = new Dictionary<UInt32, int>();
+        private readonly Dictionary<UInt32, int> recordIndexLookup = new Dictionary<UInt32, int>();
 
         /// <summary>
         /// Auto-discard behaviour enabled or disabled.
@@ -64,7 +72,7 @@ namespace DaggerfallConnect.Arena2
         /// <summary>
         /// The BsaFile representing ARCH3D.BSA
         /// </summary>
-        private BsaFile bsaFile = new BsaFile();
+        private readonly BsaFile bsaFile = new BsaFile();
 
         /// <summary>
         /// Array of decomposed mesh records.
@@ -74,7 +82,7 @@ namespace DaggerfallConnect.Arena2
         /// <summary>
         /// Object for calculating UV values of face points
         /// </summary>
-        private FaceUVTool faceUVTool = new FaceUVTool();
+        private readonly FaceUVTool faceUVTool = new FaceUVTool();
 
         #endregion
 
@@ -165,7 +173,7 @@ namespace DaggerfallConnect.Arena2
             public Byte PlanePointCount;
             public Byte Unknown1;
             public UInt16 Texture;
-            public UInt32 Unknown2;
+            public int UVunpack;
         }
 
         /// <summary>
@@ -184,6 +192,8 @@ namespace DaggerfallConnect.Arena2
         {
             public TextureIndex[] UniqueTextures;
             public PurePlane[] Planes;
+            public DFMesh.DFPoint Size;
+            public DFMesh.DFPoint Centre;
         }
 
         /// <summary>
@@ -274,7 +284,7 @@ namespace DaggerfallConnect.Arena2
         /// </summary>
         public int Count
         {
-            get {return bsaFile.Count;}
+            get { return bsaFile.Count; }
         }
 
         #endregion
@@ -595,6 +605,7 @@ namespace DaggerfallConnect.Arena2
             BinaryReader reader = records[record].MemoryFile.GetReader(position);
             BinaryReader pointReader = records[record].MemoryFile.GetReader();
             BinaryReader planeDataReader = records[record].MemoryFile.GetReader();
+            int minX = 0, maxX = 0, minY = 0, maxY = 0, minZ = 0, maxZ = 0;
             for (int plane = 0; plane < faceCount; plane++)
             {
                 // Read plane header
@@ -602,7 +613,7 @@ namespace DaggerfallConnect.Arena2
                 records[record].PureMesh.Planes[plane].Header.PlanePointCount = reader.ReadByte();
                 records[record].PureMesh.Planes[plane].Header.Unknown1 = reader.ReadByte();
                 records[record].PureMesh.Planes[plane].Header.Texture = reader.ReadUInt16();
-                records[record].PureMesh.Planes[plane].Header.Unknown2 = reader.ReadUInt32();
+                records[record].PureMesh.Planes[plane].Header.UVunpack = reader.ReadInt32();
 
                 // Read the normal data for this plane
                 Int32 nx = normalReader.ReadInt32();
@@ -628,7 +639,7 @@ namespace DaggerfallConnect.Arena2
                     uniqueTextureBuffer[uniqueTextureCount].Record = textureRecord;
                     uniqueTextureCount++;
                 }
-                
+
                 // Store texture index for this plane
                 records[record].PureMesh.Planes[plane].TextureIndex.Archive = textureArchive;
                 records[record].PureMesh.Planes[plane].TextureIndex.Record = textureRecord;
@@ -642,32 +653,23 @@ namespace DaggerfallConnect.Arena2
                     int pointOffset = reader.ReadInt32();
 
                     // Read UV data
-                    Int16 u = reader.ReadInt16();
-                    Int16 v = reader.ReadInt16();
+                    int u = reader.ReadInt16();
+                    int v = reader.ReadInt16();
 
-                    // Fix certain UV coordinates that are
-                    // packed oddly, or aligned outside of poly.
-                    int threshold = 14335;
-                    while (u > threshold)
+                    // Fix some UV coordinates (process only the first 3 points as
+                    // coordinates from point 4 and above are ignored)
+                    if (point < 3)
                     {
-                        u = (Int16)(0x4000 - u);
-                    }
-                    while (u < -threshold)
-                    {
-                        u = (Int16)(0x4000 + u);
-                    }
-                    while (v > threshold)
-                    {
-                        v = (Int16)(0x4000 - v);
-                    }
-                    while (v < -threshold)
-                    {
-                        v = (Int16)(0x4000 + v);
-                    }
+                        // Fix incorrect coordinates
+                        FixBadUVCoordinates(record, plane, point, ref u, ref v);
 
-                    // Fix some remaining special-case textures
-                    if (u == 7168) u = 1024;
-                    if (u == -7168) u = -1024;
+                        // Fix coordinates which require specific unpacking
+                        if (records[record].PureMesh.Planes[plane].Header.UVunpack == 0)
+                        {
+                            UVunpack(ref u);
+                            UVunpack(ref v);
+                        }
+                    }
 
                     // Store UV coordinates
                     records[record].PureMesh.Planes[plane].Points[point].u = u;
@@ -686,11 +688,25 @@ namespace DaggerfallConnect.Arena2
                             break;
                     }
 
-                    // Store native point values
+                    // Read native point values
                     pointReader.BaseStream.Position = pointPosition;
-                    records[record].PureMesh.Planes[plane].Points[point].x = pointReader.ReadInt32();
-                    records[record].PureMesh.Planes[plane].Points[point].y = pointReader.ReadInt32();
-                    records[record].PureMesh.Planes[plane].Points[point].z = pointReader.ReadInt32();
+                    int x = pointReader.ReadInt32();
+                    int y = pointReader.ReadInt32();
+                    int z = pointReader.ReadInt32();
+
+                    // Find min/max values of native points so far
+                    // This can be used to construct a tight box around mesh
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                    if (z < minZ) minZ = z;
+                    if (z > maxZ) maxZ = z;
+
+                    // Store native point values
+                    records[record].PureMesh.Planes[plane].Points[point].x = x;
+                    records[record].PureMesh.Planes[plane].Points[point].y = y;
+                    records[record].PureMesh.Planes[plane].Points[point].z = z;
 
                     // Store native normal values for each vertex
                     records[record].PureMesh.Planes[plane].Points[point].nx = nx;
@@ -701,6 +717,20 @@ namespace DaggerfallConnect.Arena2
                 // Read unknown plane data
                 planeDataReader.BaseStream.Position = records[record].Header.PlaneDataOffset + plane * 24;
                 records[record].PureMesh.Planes[plane].PlaneData = planeDataReader.ReadBytes(24);
+
+                // Store size of mesh
+                DFMesh.DFPoint size = new DFMesh.DFPoint();
+                size.X = (maxX / pointDivisor - minX / pointDivisor);
+                size.Y = (maxY / pointDivisor - minY / pointDivisor);
+                size.Z = (maxZ / pointDivisor - minZ / pointDivisor);
+                records[record].PureMesh.Size = size;
+
+                // Store centre of mesh
+                DFMesh.DFPoint centre = new DFMesh.DFPoint();
+                centre.X = size.X / 2;
+                centre.Y = size.Y / 2;
+                centre.Z = size.Z / 2;
+                records[record].PureMesh.Centre = centre;
             }
 
             //// Read unknown object data, but ignore known non-conforming objects
@@ -743,6 +773,174 @@ namespace DaggerfallConnect.Arena2
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Unpack special texture coordinates.
+        /// </summary>
+        /// <param name="u">The U or V coordinate.</param>
+        private static void UVunpack(ref int u)
+        {
+            const int n = 1024;
+            const int delta = n * 8;
+
+            // A packed coordinate has to be a multiple of 1024
+            // Also avoid unpacking 8192 or -8192
+            if (u % n != 0 || u == delta || u == -delta)
+                return;
+
+            // Values below or above this one produce incorrect results
+            const int threshold = delta - n - 1;
+            if (u > threshold)
+                u = n - (u + n) % delta;
+            else if (u < -threshold)
+                u = n + (u - n) % delta;
+        }
+
+        /// <summary>
+        /// Fix some incorrect UV coordinates.
+        /// </summary>
+        /// <param name="record">Mesh record index.</param>
+        /// <param name="plane">Plane index.</param>
+        /// <param name="point">Point index.</param>
+        /// <param name="u">U texture coordinate.</param>
+        /// <param name="v">V texture coordinate.</param>
+        private static void FixBadUVCoordinates(int record, int plane, int point, ref int u, ref int v)
+        {
+            switch (record)
+            {
+                // Dungeon corridor floor
+                case 989:
+                    if (plane == 13)
+                    {
+                        u = uDungeonCorridor989[point];
+                        v = vDungeonCorridor989[point];
+                    }
+                    break;
+
+                // All models containing interior pillars have incorrect
+                // UV coordinates (usually on the pillars, except models
+                // 31027...31827 which also have stretched textures around
+                // the entrance
+                case 2296: // Record id 31006
+                case 8869: // 31106
+                case 8834: // 31206
+                case 1986: // ...
+                case 8874:
+                case 2073:
+                case 2104:
+                case 2163:
+                case 2194: // 31806
+                    if (plane == 2)
+                        u = uFirstPillar[point];
+                    else if (plane == 3)
+                        u = uSecondPillar[point];
+                    break;
+                case 2242: // 31024
+                case 8822:
+                case 8788:
+                case 2029:
+                case 2062:
+                case 2092:
+                case 2154:
+                case 2178:
+                case 2212: // 31824
+                    if (plane == 2)
+                        u = uSecondPillar[point];
+                    else if (plane == 3)
+                        u = uFirstPillar[point];
+                    break;
+                case 2246: // 31025
+                case 8824:
+                case 8785:
+                case 2034:
+                case 2064:
+                case 2086:
+                case 2155:
+                case 2182:
+                case 2213: // 31825
+                    if (plane == 6 || plane == 11)
+                        u = uFirstPillar[point];
+                    else if (plane == 7 || plane == 12)
+                        u = uSecondPillar[point];
+                    break;
+                case 2238: // 31026
+                case 8825:
+                case 8789:
+                case 2032:
+                case 2065:
+                case 2093:
+                case 2156:
+                case 2183:
+                case 2214: // 31826
+                    if (plane == 1)
+                        u = uFirstPillar[point];
+                    else if (plane == 2)
+                        u = uSecondPillar[point];
+                    break;
+                case 2243: // 31027
+                case 8814:
+                case 8790:
+                case 2035:
+                case 2067:
+                case 2094:
+                case 2157:
+                case 2186:
+                case 2215: // 31827
+                    // Single pillar
+                    if (plane == 1 && point == 0)
+                        u = 1952;
+                    // Planes around the entrance
+                    if (plane == 11)
+                        v = vEntrancePlane11[point];
+                    else if (plane == 12)
+                        v = vEntrancePlane12[point];
+                    else if (plane == 13)
+                        v = vEntrancePlane13[point];
+                    break;
+                case 2247: // 31028
+                case 8828:
+                case 8793:
+                case 2038:
+                case 2068:
+                case 2095:
+                case 2158:
+                case 2185:
+                case 2216: // 31828
+                    if (plane == 0 && point == 0)
+                        u = 1952;
+                    break;
+                case 2248: // 31030
+                case 8827:
+                case 8792:
+                case 2037:
+                case 2066:
+                case 2098:
+                case 10033:
+                case 2187:
+                case 10036: // 31830
+                    if (plane == 7)
+                        u = uSecondPillar[point];
+                    break;
+                case 2251: // 31031
+                case 8705:
+                case 8707:
+                case 1984:
+                case 9761:
+                case 10032:
+                case 10034:
+                case 10035:
+                case 10037: // 31831
+                    if (plane == 3 && point == 0)
+                        u = 2992;
+                    break;
+
+                // Weapon store exterior wall on the right side of the door (e.g. The Count's Arsenal, Newtale, Bhoriane)
+                case 5941:
+                    if (plane == 21 && point == 2)
+                        u = -1024;
+                    break;
+            }
         }
 
         /// <summary>
@@ -800,6 +998,10 @@ namespace DaggerfallConnect.Arena2
 
             // Store total triangle across whole mesh
             records[record].DFMesh.TotalTriangles = totalTriangles;
+
+            // Copy size and centre of mesh
+            records[record].DFMesh.Size = records[record].PureMesh.Size;
+            records[record].DFMesh.Centre = records[record].PureMesh.Centre;
 
             return true;
         }
@@ -863,7 +1065,7 @@ namespace DaggerfallConnect.Arena2
                 }
 
                 // Store UV generation method of this plane
-                subMeshBuffer[subMeshIndex].PlaneBuffer[planeIndex].UVGenerationMethod = DFMesh.UVGenerationMethods.ModifedMatrixGenerator;
+                subMeshBuffer[subMeshIndex].PlaneBuffer[planeIndex].UVGenerationMethod = DFMesh.UVGenerationMethods.ModifiedMatrixGenerator;
             }
 
             // Write first 3 points

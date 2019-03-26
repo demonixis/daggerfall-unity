@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -15,6 +15,7 @@ using DaggerfallWorkshop.Utility;
 using DaggerfallWorkshop.Game.Serialization;
 using DaggerfallWorkshop.Game.Entity;
 using DaggerfallWorkshop.Game.UserInterfaceWindows;
+using DaggerfallWorkshop.Game.Questing;
 
 namespace DaggerfallWorkshop.Game
 {
@@ -31,6 +32,8 @@ namespace DaggerfallWorkshop.Game
         DaggerfallEntityBehaviour entityBehaviour;
         EnemyEntity enemyEntity;
 
+        bool performDeath = false;
+
         #endregion
 
         #region Unity
@@ -42,25 +45,36 @@ namespace DaggerfallWorkshop.Game
             entityBehaviour.OnSetEntity += EntityBehaviour_OnSetEntity;
         }
 
+        private void Update()
+        {
+            if (performDeath)
+                CompleteDeath();
+        }
+
         #endregion
 
-        #region Event Handlers
+        #region Private Methods
 
-        private void EntityBehaviour_OnSetEntity(DaggerfallEntity oldEntity, DaggerfallEntity newEntity)
+        void CompleteDeath()
         {
-            if (oldEntity != null)
+            if (!entityBehaviour)
+                return;
+
+            // If enemy associated with quest system, make sure quest system is done with it first
+            QuestResourceBehaviour questResourceBehaviour = GetComponent<QuestResourceBehaviour>();
+            if (questResourceBehaviour)
             {
-                oldEntity.OnDeath -= EnemyEntity_OnDeath;
+                if (!questResourceBehaviour.IsFoeDead)
+                    return;
             }
 
-            if (newEntity != null)
+            // Play body collapse sound
+            if (DaggerfallUI.Instance.DaggerfallAudioSource)
             {
-                enemyEntity = newEntity as EnemyEntity;
-                enemyEntity.OnDeath += EnemyEntity_OnDeath; ;
+                AudioClip collapseSound = DaggerfallUI.Instance.DaggerfallAudioSource.GetAudioClip((int)SoundClips.BodyFall);
+                AudioSource.PlayClipAtPoint(collapseSound, entityBehaviour.transform.position, 1.05f);
             }
-        }
-        private void EnemyEntity_OnDeath(DaggerfallEntity entity)
-        {
+
             // Disable enemy gameobject
             // Do not destroy as we must still save enemy state when dead
             gameObject.SetActive(false);
@@ -78,12 +92,54 @@ namespace DaggerfallWorkshop.Game
                 mobile.Summary.Enemy.CorpseTexture,
                 DaggerfallUnity.NextUID);
 
-            // Generate items
-            loot.GenerateItems();
+            // This is still required so enemy equipment is not marked as equipped
+            // This item collection is transferred to loot container below
+            for (int i = (int)Items.EquipSlots.Head; i <= (int)Items.EquipSlots.Feet; i++)
+            {
+                Items.DaggerfallUnityItem item = enemyEntity.ItemEquipTable.GetItem((Items.EquipSlots)i);
+                if (item != null)
+                {
+                    enemyEntity.ItemEquipTable.UnequipItem((Items.EquipSlots)i);
+                }
+            }
+
+            entityBehaviour.CorpseLootContainer = loot;
+
+            // Transfer any items owned by entity to loot container
+            // Many quests will stash a reward in enemy inventory for player to find
+            // This will be in addition to normal random loot table generation
+            loot.Items.TransferAll(entityBehaviour.Entity.Items);
 
             // Raise static event
             if (OnEnemyDeath != null)
                 OnEnemyDeath(this, null);
+        }
+
+        #endregion
+
+        #region Event Handlers
+
+        private void EntityBehaviour_OnSetEntity(DaggerfallEntity oldEntity, DaggerfallEntity newEntity)
+        {
+            if (oldEntity != null)
+            {
+                oldEntity.OnDeath -= EnemyEntity_OnDeath;
+            }
+
+            if (newEntity != null)
+            {
+                enemyEntity = newEntity as EnemyEntity;
+                enemyEntity.OnDeath += EnemyEntity_OnDeath;
+            }
+        }
+
+        private void EnemyEntity_OnDeath(DaggerfallEntity entity)
+        {
+            // Set flag to perform OnDeath tasks
+            // It make take a few ticks for enemy to actually die if owned by quest system
+            // because some other processing might need to be done in quest (like placing an item)
+            // before this enemy can be deactivated and loot container dropped
+            performDeath = true;
         }
 
         #endregion

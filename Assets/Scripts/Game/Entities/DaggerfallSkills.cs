@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -11,8 +11,6 @@
 
 using UnityEngine;
 using System;
-using System.Collections;
-using System.Collections.Generic;
 using DaggerfallConnect;
 
 namespace DaggerfallWorkshop.Game.Entity
@@ -21,69 +19,161 @@ namespace DaggerfallWorkshop.Game.Entity
     /// Daggerfall skills collection for every entity.
     /// </summary>
     [Serializable]
-    public struct DaggerfallSkills
+    public class DaggerfallSkills
     {
+        #region Fields
+
         public const int Count = 35;
         public const int PrimarySkillsCount = 3;
         public const int MajorSkillsCount = 3;
         public const int MinorSkillsCount = 6;
-
         const int minDefaultValue = 3;
         const int maxDefaultValue = 6;
 
-        public short Medical;
-        public short Etiquette;
-        public short Streetwise;
-        public short Jumping;
-        public short Orcish;
-        public short Harpy;
-        public short Giantish;
-        public short Dragonish;
-        public short Nymph;
-        public short Daedric;
-        public short Spriggan;
-        public short Centaurian;
-        public short Impish;
-        public short Lockpicking;
-        public short Mercantile;
-        public short Pickpocket;
-        public short Stealth;
-        public short Swimming;
-        public short Climbing;
-        public short Backstabbing;
-        public short Dodging;
-        public short Running;
-        public short Destruction;
-        public short Restoration;
-        public short Illusion;
-        public short Alteration;
-        public short Thaumaturgy;
-        public short Mysticism;
-        public short ShortBlade;
-        public short LongBlade;
-        public short HandToHand;
-        public short Axe;
-        public short BluntWeapon;
-        public short Archery;
-        public short CriticalStrike;
+        // Current permanent skill values
+        [SerializeField] short Medical;
+        [SerializeField] short Etiquette;
+        [SerializeField] short Streetwise;
+        [SerializeField] short Jumping;
+        [SerializeField] short Orcish;
+        [SerializeField] short Harpy;
+        [SerializeField] short Giantish;
+        [SerializeField] short Dragonish;
+        [SerializeField] short Nymph;
+        [SerializeField] short Daedric;
+        [SerializeField] short Spriggan;
+        [SerializeField] short Centaurian;
+        [SerializeField] short Impish;
+        [SerializeField] short Lockpicking;
+        [SerializeField] short Mercantile;
+        [SerializeField] short Pickpocket;
+        [SerializeField] short Stealth;
+        [SerializeField] short Swimming;
+        [SerializeField] short Climbing;
+        [SerializeField] short Backstabbing;
+        [SerializeField] short Dodging;
+        [SerializeField] short Running;
+        [SerializeField] short Destruction;
+        [SerializeField] short Restoration;
+        [SerializeField] short Illusion;
+        [SerializeField] short Alteration;
+        [SerializeField] short Thaumaturgy;
+        [SerializeField] short Mysticism;
+        [SerializeField] short ShortBlade;
+        [SerializeField] short LongBlade;
+        [SerializeField] short HandToHand;
+        [SerializeField] short Axe;
+        [SerializeField] short BluntWeapon;
+        [SerializeField] short Archery;
+        [SerializeField] short CriticalStrike;
 
+        // Mods are temporary changes to skill values from effects
+        // Default is 0 - effects can raise/lower mod values during their lifecycle
+        // This is designed so that effects are never operating on permanent skill values
+        int[] mods = new int[Count];
+
+        #endregion
+
+        #region Constructors
+
+        public DaggerfallSkills()
+        {
+            SetDefaults();
+        }
+
+        #endregion
+
+        #region Public Methods
+
+        /// <summary>
+        /// Set default value to each skill.
+        /// </summary>
         public void SetDefaults()
         {
             for (int i = 0; i < Count; i++)
             {
-                SetSkillValue(i, (short)UnityEngine.Random.Range(minDefaultValue, maxDefaultValue + 1));
+                SetPermanentSkillValue(i, (short)UnityEngine.Random.Range(minDefaultValue, maxDefaultValue + 1));
             }
+            Array.Clear(mods, 0, Count);
         }
 
+        /// <summary>
+        /// Copy contents of another DaggerfallSkills into this one.
+        /// Does not copy active effect mods.
+        /// </summary>
+        /// <param name="other">Skilla collection to copy from.</param>
         public void Copy(DaggerfallSkills other)
         {
             for (int i = 0; i < Count; i++)
             {
-                SetSkillValue(i, other.GetSkillValue(i));
+                SetPermanentSkillValue(i, other.GetPermanentSkillValue(i));
             }
         }
 
-        public short GetSkillValue(DFCareer.Skills skill)
+        /// <summary>
+        /// Create a new copy of this stat collection.
+        /// Does not copy active effect mods.
+        /// </summary>
+        /// <returns>New DaggerfallStats which is a copy of this DaggerfallStats.</returns>
+        public DaggerfallSkills Clone()
+        {
+            DaggerfallSkills newSkills = new DaggerfallSkills();
+            newSkills.Copy(this);
+
+            return newSkills;
+        }
+
+        #endregion
+
+        #region Getters
+
+        /// <summary>
+        /// Gets live skill value by enum, including effect mods.
+        /// </summary>
+        /// <param name="skill">Skill to get.</param>
+        /// <returns>Skill value.</returns>
+        public short GetLiveSkillValue(DFCareer.Skills skill)
+        {
+            int mod = mods[(int)skill];
+            int value = GetPermanentSkillValue(skill) + mod;
+
+            // TODO: Any other clamping or processing
+
+            return (short)value;
+        }
+
+        /// <summary>
+        /// Gets live skill value by index, including effect mods.
+        /// </summary>
+        /// <param name="index">Index of skill.</param>
+        /// <returns>Skill value.</returns>
+        public short GetLiveSkillValue(int index)
+        {
+            if (index < 0 || index >= Count)
+                return 0;
+
+            return GetLiveSkillValue((DFCareer.Skills)index);
+        }
+
+        /// <summary>
+        /// Gets permanent skill value by index, does not include effect mods.
+        /// </summary>
+        /// <param name="index">Index of skill.</param>
+        /// <returns>Skill value.</returns>
+        public short GetPermanentSkillValue(int index)
+        {
+            if (index < 0 || index >= Count)
+                return 0;
+
+            return GetPermanentSkillValue((DFCareer.Skills)index);
+        }
+
+        /// <summary>
+        /// Gets permanent skill value by enum, does not include effect mods.
+        /// </summary>
+        /// <param name="skill">Skill to get.</param>
+        /// <returns>Skill value.</returns>
+        public short GetPermanentSkillValue(DFCareer.Skills skill)
         {
             switch (skill)
             {
@@ -162,7 +252,16 @@ namespace DaggerfallWorkshop.Game.Entity
             }
         }
 
-        public void SetSkillValue(DFCareer.Skills skill, short value)
+        #endregion
+
+        #region Setters
+
+        /// <summary>
+        /// Sets permanent skill value by enum, does not change effect mods.
+        /// </summary>
+        /// <param name="skill">Skill to set.</param>
+        /// <param name="value">Skill value.</param>
+        public void SetPermanentSkillValue(DFCareer.Skills skill, short value)
         {
             switch (skill)
             {
@@ -274,15 +373,30 @@ namespace DaggerfallWorkshop.Game.Entity
             }
         }
 
-        public short GetSkillValue(int index)
+        /// <summary>
+        /// Sets permanent skill value by index, does not change effect mods.
+        /// </summary>
+        /// <param name="index">Index of skill.</param>
+        /// <param name="value">Skill value.</param>
+        public void SetPermanentSkillValue(int index, short value)
         {
-            return GetSkillValue((DFCareer.Skills)index);
+            if (index < 0 || index >= Count)
+                return;
+
+            SetPermanentSkillValue((DFCareer.Skills)index, value);
         }
 
-        public void SetSkillValue(int index, short value)
+        /// <summary>
+        /// Assign mods from effect manager.
+        /// </summary>
+        public void AssignMods(int[] skillMods)
         {
-            SetSkillValue((DFCareer.Skills)index, value);
+            Array.Copy(skillMods, mods, Count);
         }
+
+        #endregion
+
+        #region Static Methods
 
         public static DFCareer.Stats GetPrimaryStat(DFCareer.Skills skill)
         {
@@ -367,5 +481,90 @@ namespace DaggerfallWorkshop.Game.Entity
         {
             return GetPrimaryStat((DFCareer.Skills)index);
         }
+
+        public static int GetAdvancementMultiplier(DFCareer.Skills skill)
+        {
+            switch (skill)
+            {
+                case DFCareer.Skills.Medical:
+                    return 12;
+                case DFCareer.Skills.Etiquette:
+                case DFCareer.Skills.Streetwise:
+                    return 1;
+                case DFCareer.Skills.Jumping:
+                    return 5;
+                case DFCareer.Skills.Orcish:
+                case DFCareer.Skills.Harpy:
+                case DFCareer.Skills.Giantish:
+                case DFCareer.Skills.Dragonish:
+                case DFCareer.Skills.Nymph:
+                case DFCareer.Skills.Daedric:
+                case DFCareer.Skills.Spriggan:
+                case DFCareer.Skills.Centaurian:
+                case DFCareer.Skills.Impish:
+                    return 15;
+                case DFCareer.Skills.Lockpicking:
+                    return 2;
+                case DFCareer.Skills.Mercantile:
+                    return 1;
+                case DFCareer.Skills.Pickpocket:
+                case DFCareer.Skills.Stealth:
+                    return 2;
+                case DFCareer.Skills.Swimming:
+                    return 1;
+                case DFCareer.Skills.Climbing:
+                    return 2;
+                case DFCareer.Skills.Backstabbing:
+                    return 1;
+                case DFCareer.Skills.Dodging:
+                    return 4;
+                case DFCareer.Skills.Running:
+                    return 50;
+                case DFCareer.Skills.Destruction:
+                    return 1;
+                case DFCareer.Skills.Restoration:
+                    return 2;
+                case DFCareer.Skills.Illusion:
+                case DFCareer.Skills.Alteration:
+                    return 1;
+                case DFCareer.Skills.Thaumaturgy:
+                    return 2;
+                case DFCareer.Skills.Mysticism:
+                    return 1;
+                case DFCareer.Skills.ShortBlade:
+                case DFCareer.Skills.LongBlade:
+                case DFCareer.Skills.HandToHand:
+                case DFCareer.Skills.Axe:
+                case DFCareer.Skills.BluntWeapon:
+                    return 2;
+                case DFCareer.Skills.Archery:
+                    return 1;
+                case DFCareer.Skills.CriticalStrike:
+                    return 8;
+                default:
+                    return 0;
+            }
+        }
+
+        public static bool IsLanguageSkill(DFCareer.Skills skill)
+        {
+            switch (skill)
+            {
+                case DFCareer.Skills.Orcish:
+                case DFCareer.Skills.Harpy:
+                case DFCareer.Skills.Giantish:
+                case DFCareer.Skills.Dragonish:
+                case DFCareer.Skills.Nymph:
+                case DFCareer.Skills.Daedric:
+                case DFCareer.Skills.Spriggan:
+                case DFCareer.Skills.Centaurian:
+                case DFCareer.Skills.Impish:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        #endregion
     }
 }

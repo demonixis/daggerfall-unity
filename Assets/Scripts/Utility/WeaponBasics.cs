@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -11,6 +11,7 @@
 
 using System;
 using System.Collections.Generic;
+using DaggerfallWorkshop.Game.MagicAndEffects;
 
 namespace DaggerfallWorkshop.Utility
 {
@@ -31,6 +32,7 @@ namespace DaggerfallWorkshop.Utility
         public static int StrikeDownRightAnimSpeed = 10;
         public static int StrikeUpAnimSpeed = 10;
         public static int WereStrikeAnimSpeed = 20;
+        public static int BowAnimSpeed = 10;
 
         // Animations for melee - offset and aligment changes
         public static WeaponAnimation[] MeleeWeaponAnims = new WeaponAnimation[]
@@ -80,6 +82,18 @@ namespace DaggerfallWorkshop.Utility
             new WeaponAnimation() {Record = 6, NumFrames = 5, FramePerSecond = StrikeUpAnimSpeed, Alignment = WeaponAlignment.Right, Offset = 0f},
         };
 
+        // Animations for bow
+        public static WeaponAnimation[] BowWeaponAnims = new WeaponAnimation[]
+        {
+            new WeaponAnimation() {Record = 0, NumFrames = 4, FramePerSecond = IdleAnimSpeed, Alignment = WeaponAlignment.Right, Offset = 0f},
+            new WeaponAnimation() {Record = 0, NumFrames = 7, FramePerSecond = BowAnimSpeed, Alignment = WeaponAlignment.Right, Offset = 0f},
+            new WeaponAnimation() {Record = 0, NumFrames = 7, FramePerSecond = BowAnimSpeed, Alignment = WeaponAlignment.Right, Offset = 0f},
+            new WeaponAnimation() {Record = 0, NumFrames = 7, FramePerSecond = BowAnimSpeed, Alignment = WeaponAlignment.Right, Offset = 0f},
+            new WeaponAnimation() {Record = 0, NumFrames = 7, FramePerSecond = BowAnimSpeed, Alignment = WeaponAlignment.Right, Offset = 0f},
+            new WeaponAnimation() {Record = 0, NumFrames = 7, FramePerSecond = BowAnimSpeed, Alignment = WeaponAlignment.Right, Offset = 0f},
+            new WeaponAnimation() {Record = 0, NumFrames = 7, FramePerSecond = BowAnimSpeed, Alignment = WeaponAlignment.Right, Offset = 0f},
+        };
+
         // Animations for werecreature - alignment changes
         public static WeaponAnimation[] WerecreatureWeaponAnims = new WeaponAnimation[]
         {
@@ -104,6 +118,8 @@ namespace DaggerfallWorkshop.Utility
                 return DaggerWeaponAnims;
             else if (weaponType == WeaponTypes.Staff || weaponType == WeaponTypes.Staff_Magic)
                 return StaffWeaponAnims;
+            else if (weaponType == WeaponTypes.Bow)
+                return BowWeaponAnims;
             else if (weaponType == WeaponTypes.Werecreature)
                 return WerecreatureWeaponAnims;
             else
@@ -150,6 +166,25 @@ namespace DaggerfallWorkshop.Utility
                     return "WEAPON11.CIF";
                 default:
                     throw new Exception("Unknown weapon type.");
+            }
+        }
+
+        public static string GetMagicAnimFilename(ElementTypes elementType)
+        {
+            switch (elementType)
+            {
+                case ElementTypes.Fire:
+                    return "FIRE00C6.CIF";
+                case ElementTypes.Cold:
+                    return "FRST00C6.CIF";
+                case ElementTypes.Poison:
+                    return "POIS00C6.CIF";
+                case ElementTypes.Shock:
+                    return "SHOK00C6.CIF";
+                case ElementTypes.Magic:
+                    return "MJIC00C6.CIF";
+                default:
+                    throw new Exception("Unsupported element type.");
             }
         }
 

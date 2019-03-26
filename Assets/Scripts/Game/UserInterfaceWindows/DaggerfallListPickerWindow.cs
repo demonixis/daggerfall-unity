@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -19,6 +19,7 @@ using DaggerfallConnect.Arena2;
 using DaggerfallWorkshop;
 using DaggerfallWorkshop.Game.UserInterface;
 using DaggerfallWorkshop.Game.Player;
+using DaggerfallWorkshop.Utility.AssetInjection;
 
 namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 {
@@ -33,10 +34,26 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         protected Panel pickerPanel = new Panel();
         protected ListBox listBox = new ListBox();
         protected VerticalScrollBar scrollBar;
+        protected DaggerfallFont font = null;
+        protected int rowsDisplayed = 0;
 
-        public DaggerfallListPickerWindow(IUserInterfaceManager uiManager, DaggerfallBaseWindow previous = null)
+        public DaggerfallFont Font
+        {
+            get { return listBox.Font; }
+            set { listBox.Font = (value != null) ? value : DaggerfallUI.DefaultFont; }
+        }
+
+        public int RowsDisplayed
+        {
+            get { return listBox.RowsDisplayed; }
+            set { listBox.RowsDisplayed = (value > 0) ? value : listBox.RowsDisplayed; }
+        }
+
+        public DaggerfallListPickerWindow(IUserInterfaceManager uiManager, IUserInterfaceWindow previous = null, DaggerfallFont font = null, int rowsDisplayed = 0)
             : base(uiManager, previous)
         {
+            Font = font;
+            RowsDisplayed = rowsDisplayed;
         }
 
         public ListBox ListBox
@@ -54,7 +71,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 throw new Exception("DaggerfallClassSelectWindow: Could not load native texture.");
 
             // Create panel for picker
-            pickerPanel.Size = new Vector2(nativeTexture.width, nativeTexture.height);
+            pickerPanel.Size = TextureReplacement.GetSize(nativeTexture, nativeImgName);
             pickerPanel.HorizontalAlignment = HorizontalAlignment.Center;
             pickerPanel.VerticalAlignment = VerticalAlignment.Middle;
             pickerPanel.BackgroundTexture = nativeTexture;

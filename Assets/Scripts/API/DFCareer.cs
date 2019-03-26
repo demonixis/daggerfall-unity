@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -11,7 +11,6 @@
 
 #region Using Statements
 using System;
-using System.Text;
 using System.Globalization;
 #endregion
 
@@ -31,8 +30,9 @@ namespace DaggerfallConnect
         // Advancement multiplier
         public float AdvancementMultiplier;
 
-        // Hit points per level or monster level
-        public int HitPointsPerLevelOrMonsterLevel;
+        // For classes, maximum hit point gain per level
+        // For monsters, the number of 1d8 hit point die rolls
+        public int HitPointsPerLevel;
 
         // Attributes
         public int Strength;
@@ -210,8 +210,9 @@ namespace DaggerfallConnect
             public Byte[] Unknown2;
 
             // bytes [52-53]
-            // Hit points per level for classes, monster level for monsters
-            public UInt16 HitPointsPerLevelOrMonsterLevel;
+            // For classes, maximum hit point gain per level
+            // For monsters, the number of 1d8 hit point die rolls
+            public UInt16 HitPointsPerLevel;
 
             // bytes [54-57]
             // Advancement multiplier fixed point format
@@ -311,10 +312,11 @@ namespace DaggerfallConnect
         /// </summary>
         public enum EnemyGroups
         {
-            Undead,
-            Daedra,
-            Humanoid,
-            Animals,
+            None = -1,
+            Undead = 0,
+            Daedra = 1,
+            Humanoid = 2,
+            Animals = 3,
         }
 
         /// <summary>
@@ -413,6 +415,7 @@ namespace DaggerfallConnect
         /// </summary>
         public enum Stats
         {
+            None = -1,
             Strength = 0,
             Intelligence = 1,
             Willpower = 2,
@@ -431,6 +434,7 @@ namespace DaggerfallConnect
         /// </summary>
         public enum Skills
         {
+            None = -1,
             Medical = 0,
             Etiquette = 1,
             Streetwise = 2,
@@ -466,6 +470,34 @@ namespace DaggerfallConnect
             BluntWeapon = 32,
             Archery = 33,
             CriticalStrike = 34,
+        }
+
+        /// <summary>
+        /// Elements for resistances and saving throws.
+        /// Values maps to classic resistance element used in saving throws.
+        /// </summary>
+        public enum Elements
+        {
+            None = -1,
+            Fire = 0,
+            Frost = 1,
+            DiseaseOrPoison = 2,
+            Shock = 3,
+            Magic = 4,
+        }
+
+        /// <summary>
+        /// Magic skills only - values match main skills enum.
+        /// </summary>
+        public enum MagicSkills
+        {
+            None = -1,
+            Destruction = 22,
+            Restoration = 23,
+            Illusion = 24,
+            Alteration = 25,
+            Thaumaturgy = 26,
+            Mysticism = 27,
         }
 
         /// <summary>
@@ -534,7 +566,7 @@ namespace DaggerfallConnect
             this.MinorSkill5 = (Skills)cfg.MinorSkill5;
             this.MinorSkill6 = (Skills)cfg.MinorSkill6;
 
-            this.HitPointsPerLevelOrMonsterLevel = cfg.HitPointsPerLevelOrMonsterLevel;
+            this.HitPointsPerLevel = cfg.HitPointsPerLevel;
 
             float value = (cfg.AdvancementMultiplier >> 16) + ((cfg.AdvancementMultiplier & 0xffff)) / 65536f;
             try

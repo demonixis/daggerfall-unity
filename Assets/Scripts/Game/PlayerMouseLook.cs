@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -72,6 +72,8 @@ namespace DaggerfallWorkshop.Game
 
         void Update()
         {
+            bool applyLook = true;
+
             // Ensure the cursor always locked when set
             if (lockCursor && enableMouseLook)
             {
@@ -103,9 +105,8 @@ namespace DaggerfallWorkshop.Game
                 return;
 
             // Suppress mouse look if player is swinging weapon
-            //if (Input.GetButton("Fire2"))
-            if (InputManager.Instance.HasAction(InputManager.Actions.SwingWeapon))
-                return;
+            if (InputManager.Instance.HasAction(InputManager.Actions.SwingWeapon) && !DaggerfallUnity.Settings.ClickToAttack)
+                applyLook = false;
 
             Vector2 rawMouseDelta = new Vector2(InputManager.Instance.LookX, InputManager.Instance.LookY);
 
@@ -130,16 +131,22 @@ namespace DaggerfallWorkshop.Game
                 _mouseAbsolute += _smoothMouse;
 
                 // Update pitch and yaw
-                Yaw += _smoothMouse.x;
-                Pitch += -_smoothMouse.y;
+                if (applyLook)
+                {
+                    Yaw += _smoothMouse.x;
+                    Pitch += -_smoothMouse.y;
+                }
             }
             else
             {
                 // Just use scaled raw mouse input without any smoothing
                 rawMouseDelta = Vector2.Scale(rawMouseDelta, new Vector2(sensitivityX, sensitivityY));
                 _mouseAbsolute += rawMouseDelta;
-                Yaw += rawMouseDelta.x;
-                Pitch += -rawMouseDelta.y;
+                if (applyLook)
+                {
+                    Yaw += rawMouseDelta.x;
+                    Pitch += -rawMouseDelta.y;
+                }
             }
 
             // If there's a character body that acts as a parent to the camera
@@ -173,6 +180,14 @@ namespace DaggerfallWorkshop.Game
             Quaternion q = Quaternion.LookRotation(forward);
             Vector3 v = q.eulerAngles;
             SetFacing(v.y, v.x);
+        }
+
+        // Set facing but keep pitch level
+        public void SetHorizontalFacing(Vector3 forward)
+        {
+            Quaternion q = Quaternion.LookRotation(forward);
+            Vector3 v = q.eulerAngles;
+            SetFacing(v.y, 0f);
         }
     }
 }

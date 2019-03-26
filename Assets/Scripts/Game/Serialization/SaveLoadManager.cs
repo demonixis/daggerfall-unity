@@ -1,10 +1,10 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
 // Original Author: Gavin Clayton (interkarma@dfworkshop.net)
-// Contributors:    
+// Contributors:    Lypyl (lypyldf@gmail.com)
 // 
 // Notes:
 //
@@ -16,7 +16,11 @@ using System.Collections;
 using System.Collections.Generic;
 using FullSerializer;
 using DaggerfallWorkshop.Game.UserInterfaceWindows;
-using DaggerfallWorkshop.Utility;
+using DaggerfallWorkshop.Game.Questing;
+using DaggerfallWorkshop.Game.Banking;
+using DaggerfallWorkshop.Game.Utility.ModSupport;
+using DaggerfallWorkshop.Game.Player;
+using DaggerfallWorkshop.Game.Entity;
 
 namespace DaggerfallWorkshop.Game.Serialization
 {
@@ -37,19 +41,19 @@ namespace DaggerfallWorkshop.Game.Serialization
         const string autoSaveName = "AutoSave";
         const string saveInfoFilename = "SaveInfo.txt";
         const string saveDataFilename = "SaveData.txt";
+        const string factionDataFilename = "FactionData.txt";
         const string containerDataFilename = "ContainerData.txt";
+        const string questDataFilename = "QuestData.txt";
+        const string discoveryDataFilename = "DiscoveryData.txt";
+        const string conversationDataFilename = "ConversationData.txt";
+        const string notebookDataFilename = "NotebookData.txt";
         const string automapDataFilename = "AutomapData.txt";
         const string screenshotFilename = "Screenshot.jpg";
+        const string bioFileName = "bio.txt";
         const string notReadyExceptionText = "SaveLoad not ready.";
-        const string invalidLoadIDExceptionText = "serializableObject does not have a valid LoadID";
-        const string duplicateLoadIDErrorText = "{0} detected duplicate LoadID {1}. This object will not be serialized.";
 
-        // Serializable objects in scene
-        SerializablePlayer serializablePlayer;
-        Dictionary<ulong, SerializableActionDoor> serializableActionDoors = new Dictionary<ulong, SerializableActionDoor>();
-        Dictionary<ulong, SerializableActionObject> serializableActionObjects = new Dictionary<ulong, SerializableActionObject>();
-        Dictionary<ulong, SerializableEnemy> serializableEnemies = new Dictionary<ulong, SerializableEnemy>();
-        Dictionary<ulong, SerializableLootContainer> serializableLootContainers = new Dictionary<ulong, SerializableLootContainer>();
+        // Serializable state manager for stateful game objects
+        SerializableStateManager stateManager = new SerializableStateManager();
 
         // Enumerated save info
         Dictionary<int, string> enumeratedSaveFolders = new Dictionary<int, string>();
@@ -63,6 +67,11 @@ namespace DaggerfallWorkshop.Game.Serialization
         #endregion
 
         #region Properties
+
+        public static SerializableStateManager StateManager
+        {
+            get { return Instance.stateManager; }
+        }
 
         public int LatestSaveVersion
         {
@@ -87,6 +96,11 @@ namespace DaggerfallWorkshop.Game.Serialization
         public string[] CharacterNames
         {
             get { return GetCharacterNames(); }
+        }
+
+        public bool LoadInProgress
+        {
+            get { return loadInProgress; }
         }
 
         #endregion
@@ -293,6 +307,16 @@ namespace DaggerfallWorkshop.Game.Serialization
             File.Delete(Path.Combine(path, screenshotFilename));
             File.Delete(Path.Combine(path, containerDataFilename));
             File.Delete(Path.Combine(path, automapDataFilename));
+            File.Delete(Path.Combine(path, conversationDataFilename));
+            File.Delete(Path.Combine(path, discoveryDataFilename));
+            File.Delete(Path.Combine(path, factionDataFilename));
+            File.Delete(Path.Combine(path, questDataFilename));
+            File.Delete(Path.Combine(path, bioFileName));
+            if (ModManager.Instance != null)
+            {
+                foreach (Mod mod in ModManager.Instance.GetAllModsWithSaveData())
+                    File.Delete(Path.Combine(path, GetModDataFilename(mod)));
+            }
 
             // Attempt to delete path itself
             // Even if delete fails path should be invalid with save info removed
@@ -311,11 +335,15 @@ namespace DaggerfallWorkshop.Game.Serialization
             EnumerateSaves();
         }
 
-        public void Save(string characterName, string saveName)
+        public void Save(string characterName, string saveName, bool instantReload = false)
         {
             // Must be ready
             if (!IsReady())
                 throw new Exception(notReadyExceptionText);
+
+            // Do nothing if load in progress
+            if (LoadInProgress)
+                return;
 
             // Look for existing save with this character and name
             int key = FindSaveFolderByNames(characterName, saveName);
@@ -328,15 +356,16 @@ namespace DaggerfallWorkshop.Game.Serialization
                 path = GetSaveFolder(key);
 
             // Save game
-            StartCoroutine(SaveGame(saveName, path));
+            StartCoroutine(SaveGame(saveName, path, instantReload));
         }
 
-        public void QuickSave()
+        public void QuickSave(bool instantReload = false)
         {
-            Save(GameManager.Instance.PlayerEntity.Name, quickSaveName);
+            if (!LoadInProgress)
+                Save(GameManager.Instance.PlayerEntity.Name, quickSaveName, instantReload);
         }
 
-        public void Load(string characterName, string saveName)
+        public void Load(int key)
         {
             // Must be ready
             if (!IsReady())
@@ -345,9 +374,6 @@ namespace DaggerfallWorkshop.Game.Serialization
             // Load must not be in progress
             if (loadInProgress)
                 return;
-
-            // Look for existing save with this character and name
-            int key = FindSaveFolderByNames(characterName, saveName);
 
             // Get folder
             string path;
@@ -359,10 +385,40 @@ namespace DaggerfallWorkshop.Game.Serialization
             // Load game
             loadInProgress = true;
             GameManager.Instance.PauseGame(false);
-            StartCoroutine(LoadGame(saveName, path));
+            StartCoroutine(LoadGame(path));
 
             // Notify
             DaggerfallUI.Instance.PopupMessage(HardStrings.gameLoaded);
+        }
+
+        public void Load(string characterName, string saveName)
+        {
+            //// Must be ready
+            //if (!IsReady())
+            //    throw new Exception(notReadyExceptionText);
+
+            //// Load must not be in progress
+            //if (loadInProgress)
+            //    return;
+
+            // Look for existing save with this character and name
+            int key = FindSaveFolderByNames(characterName, saveName);
+            Load(key);
+
+            //// Get folder
+            //string path;
+            //if (key == -1)
+            //    return;
+            //else
+            //    path = GetSaveFolder(key);
+
+            //// Load game
+            //loadInProgress = true;
+            //GameManager.Instance.PauseGame(false);
+            //StartCoroutine(LoadGame(path));
+
+            //// Notify
+            //DaggerfallUI.Instance.PopupMessage(HardStrings.gameLoaded);
         }
 
         public void QuickLoad()
@@ -380,10 +436,7 @@ namespace DaggerfallWorkshop.Game.Serialization
             int key = FindSaveFolderByNames(characterName, quickSaveName);
 
             // Get folder
-            if (key == -1)
-                return false;
-
-            return true;
+            return key != -1;
         }
 
         #endregion
@@ -392,126 +445,74 @@ namespace DaggerfallWorkshop.Game.Serialization
 
         public static bool FindSingleton(out SaveLoadManager singletonOut)
         {
-            singletonOut = GameObject.FindObjectOfType(typeof(SaveLoadManager)) as SaveLoadManager;
-            if (singletonOut == null)
-                return false;
-
-            return true;
+            singletonOut = FindObjectOfType<SaveLoadManager>();
+            return singletonOut != null;
         }
 
         /// <summary>
-        /// Register ISerializableGameObject with SaveLoadManager.
+        /// Register ISerializableGameObject with SerializableStateManager.
         /// </summary>
         public static void RegisterSerializableGameObject(ISerializableGameObject serializableObject)
         {
             if (sceneUnloaded)
                 return;
-
-            if (serializableObject.LoadID == 0)
-                throw new Exception(invalidLoadIDExceptionText);
-
-            if (serializableObject is SerializablePlayer)
-                Instance.serializablePlayer = serializableObject as SerializablePlayer;
-            else if (serializableObject is SerializableActionDoor)
-                AddSerializableActionDoor(serializableObject as SerializableActionDoor);
-            else if (serializableObject is SerializableActionObject)
-                AddSerializableActionObject(serializableObject as SerializableActionObject);
-            else if (serializableObject is SerializableEnemy)
-                AddSerializableEnemy(serializableObject as SerializableEnemy);
-            else if (serializableObject is SerializableLootContainer)
-                AddSerializableLootContainer(serializableObject as SerializableLootContainer);
+            Instance.stateManager.RegisterStatefulGameObject(serializableObject);
         }
 
         /// <summary>
-        /// Deregister ISerializableGameObject from SaveLoadManager.
+        /// Deregister ISerializableGameObject from SerializableStateManager.
         /// </summary>
         public static void DeregisterSerializableGameObject(ISerializableGameObject serializableObject)
         {
             if (sceneUnloaded)
                 return;
-
-            if (serializableObject.LoadID == 0)
-                throw new Exception(invalidLoadIDExceptionText);
-
-            if (serializableObject is SerializableActionDoor)
-                Instance.serializableActionDoors.Remove(serializableObject.LoadID);
-            else if (serializableObject is SerializableActionObject)
-                Instance.serializableActionObjects.Remove(serializableObject.LoadID);
-            else if (serializableObject is SerializableEnemy)
-                Instance.serializableEnemies.Remove(serializableObject.LoadID);
-            else if (serializableObject is SerializableLootContainer)
-                Instance.serializableLootContainers.Remove(serializableObject.LoadID);
+            Instance.stateManager.DeregisterStatefulGameObject(serializableObject);
         }
 
         /// <summary>
-        /// Force deregister all ISerializableGameObject instances from SaveLoadManager.
+        /// Force deregister all ISerializableGameObject instances from SerializableStateManager.
         /// </summary>
         public static void DeregisterAllSerializableGameObjects(bool keepPlayer = true)
         {
             if (sceneUnloaded)
                 return;
-
-            // Optionally deregister player
-            if (!keepPlayer)
-                Instance.serializablePlayer = null;
-
-            // Deregister other objects
-            Instance.serializableActionDoors.Clear();
-            Instance.serializableActionObjects.Clear();
-            Instance.serializableEnemies.Clear();
-            Instance.serializableLootContainers.Clear();
+            Instance.stateManager.DeregisterAllStatefulGameObjects(keepPlayer);
         }
 
-        #endregion
-
-        #region Private Static Methods
-
-        private static void AddSerializableActionDoor(SerializableActionDoor serializableObject)
+        /// <summary>
+        /// Stores the current scene in the SerializableStateManager cache using the given name.
+        /// </summary>
+        public static void CacheScene(string sceneName)
         {
-            if (Instance.serializableActionDoors.ContainsKey(serializableObject.LoadID))
-            {
-                string message = string.Format(duplicateLoadIDErrorText, "AddSerializableActionDoor()", serializableObject.LoadID);
-                DaggerfallUnity.LogMessage(message);
-                return;
-            }
-
-            Instance.serializableActionDoors.Add(serializableObject.LoadID, serializableObject);
+            if (!sceneUnloaded)
+                Instance.stateManager.CacheScene(sceneName);
         }
 
-        private static void AddSerializableActionObject(SerializableActionObject serializableObject)
+        /// <summary>
+        /// Restores the current scene from the SerializableStateManager cache using the given name.
+        /// </summary>
+        public static void RestoreCachedScene(string sceneName)
         {
-            if (Instance.serializableActionObjects.ContainsKey(serializableObject.LoadID))
-            {
-                string message = string.Format(duplicateLoadIDErrorText, "AddSerializableActionObject()", serializableObject.LoadID);
-                DaggerfallUnity.LogMessage(message);
-                return;
-            }
-
-            Instance.serializableActionObjects.Add(serializableObject.LoadID, serializableObject);
+            if (!sceneUnloaded)
+                Instance.StartCoroutine(Instance.RestoreCachedSceneNextFrame(sceneName));
         }
 
-        private static void AddSerializableEnemy(SerializableEnemy serializableObject)
+        private IEnumerator RestoreCachedSceneNextFrame(string sceneName)
         {
-            if (Instance.serializableEnemies.ContainsKey(serializableObject.LoadID))
-            {
-                string message = string.Format(duplicateLoadIDErrorText, "AddSerializableEnemy()", serializableObject.LoadID);
-                DaggerfallUnity.LogMessage(message);
-                return;
-            }
-
-            Instance.serializableEnemies.Add(serializableObject.LoadID, serializableObject);
+            // Wait another frame so everthing has a chance to register
+            yield return new WaitForEndOfFrame();
+            // Restore the scene from cache
+            stateManager.RestoreCachedScene(sceneName);
         }
 
-        private static void AddSerializableLootContainer(SerializableLootContainer serializableObject)
+        /// <summary>
+        /// Clears the SerializableStateManager scene cache.
+        /// </summary>
+        /// <param name="start">True if starting a new or loaded game, so also clear permanent scene list</param>
+        public static void ClearSceneCache(bool start)
         {
-            if (Instance.serializableLootContainers.ContainsKey(serializableObject.LoadID))
-            {
-                string message = string.Format(duplicateLoadIDErrorText, "AddSerializableLootContainer()", serializableObject.LoadID);
-                DaggerfallUnity.LogMessage(message);
-                return;
-            }
-
-            Instance.serializableLootContainers.Add(serializableObject.LoadID, serializableObject);
+            if (!sceneUnloaded)
+                Instance.stateManager.ClearSceneCache(start);
         }
 
         #endregion
@@ -716,20 +717,17 @@ namespace DaggerfallWorkshop.Game.Serialization
             saveData.header = new SaveDataDescription_v1();
             saveData.currentUID = DaggerfallUnity.CurrentUID;
             saveData.dateAndTime = GetDateTimeData();
-            saveData.playerData = GetPlayerData();
+            saveData.playerData = stateManager.GetPlayerData();
             saveData.dungeonData = GetDungeonData();
-            saveData.enemyData = GetEnemyData();
-            saveData.lootContainers = GetLootContainerData();
+            saveData.enemyData = stateManager.GetEnemyData();
+            saveData.lootContainers = stateManager.GetLootContainerData();
+            saveData.bankAccounts = GetBankAccountData();
+            saveData.bankDeeds = GetBankDeedData();
+            saveData.escortingFaces = DaggerfallUI.Instance.DaggerfallHUD.EscortingFaces.GetSaveData();
+            saveData.sceneCache = stateManager.GetSceneCache();
+            saveData.travelMapData = DaggerfallUI.Instance.DfTravelMapWindow.GetTravelMapSaveData();
 
             return saveData;
-        }
-
-        PlayerData_v1 GetPlayerData()
-        {
-            if (!serializablePlayer)
-                return null;
-
-            return (PlayerData_v1)serializablePlayer.GetSaveData();
         }
 
         DateAndTime_v1 GetDateTimeData()
@@ -744,62 +742,50 @@ namespace DaggerfallWorkshop.Game.Serialization
         DungeonData_v1 GetDungeonData()
         {
             DungeonData_v1 data = new DungeonData_v1();
-            data.actionDoors = GetActionDoorData();
-            data.actionObjects = GetActionObjectData();
+            data.actionDoors = stateManager.GetActionDoorData();
+            data.actionObjects = stateManager.GetActionObjectData();
 
             return data;
         }
 
-        ActionDoorData_v1[] GetActionDoorData()
+        BankRecordData_v1[] GetBankAccountData()
         {
-            List<ActionDoorData_v1> actionDoors = new List<ActionDoorData_v1>();
+            List<BankRecordData_v1> records = new List<BankRecordData_v1>();
 
-            foreach (var value in serializableActionDoors.Values)
+            foreach (var record in DaggerfallBankManager.BankAccounts)
             {
-                if (value.ShouldSave)
-                    actionDoors.Add((ActionDoorData_v1)value.GetSaveData());
+                if (record == null)
+                    continue;
+                else if (record.accountGold == 0 && record.loanTotal == 0 && record.loanDueDate == 0)
+                    continue;
+                else
+                    records.Add(record);
             }
 
-            return actionDoors.ToArray();
+            return records.ToArray();
         }
 
-        ActionObjectData_v1[] GetActionObjectData()
+        BankDeedData_v1 GetBankDeedData()
         {
-            List<ActionObjectData_v1> actionObjects = new List<ActionObjectData_v1>();
-
-            foreach (var value in serializableActionObjects.Values)
-            {
-                if (value.ShouldSave)
-                    actionObjects.Add((ActionObjectData_v1)value.GetSaveData());
-            }
-
-            return actionObjects.ToArray();
+            return new BankDeedData_v1() {
+                shipType = (int) DaggerfallBankManager.OwnedShip,
+                houses = GetHousesData(),
+            };
         }
 
-        EnemyData_v1[] GetEnemyData()
+        HouseData_v1[] GetHousesData()
         {
-            List<EnemyData_v1> enemies = new List<EnemyData_v1>();
-
-            foreach (var value in serializableEnemies.Values)
+            List<HouseData_v1> records = new List<HouseData_v1>();
+            foreach (var record in DaggerfallBankManager.Houses)
             {
-                if (value.ShouldSave)
-                    enemies.Add((EnemyData_v1)value.GetSaveData());
+                if (record == null)
+                    continue;
+                else if (record.mapID == 0 && record.buildingKey == 0)
+                    continue;
+                else
+                    records.Add(record);
             }
-
-            return enemies.ToArray();
-        }
-
-        LootContainerData_v1[] GetLootContainerData()
-        {
-            List<LootContainerData_v1> containers = new List<LootContainerData_v1>();
-
-            foreach (var value in serializableLootContainers.Values)
-            {
-                if (value.ShouldSave)
-                    containers.Add((LootContainerData_v1)value.GetSaveData());
-            }
-
-            return containers.ToArray();
+            return records.ToArray();
         }
 
         /// <summary>
@@ -836,7 +822,7 @@ namespace DaggerfallWorkshop.Game.Serialization
                 key++;
             }
 
-            return GetSavePath(savePrefix + key.ToString(), true);
+            return GetSavePath(savePrefix + key, true);
         }
 
         #endregion
@@ -847,10 +833,14 @@ namespace DaggerfallWorkshop.Game.Serialization
         {
             DaggerfallUnity.CurrentUID = saveData.currentUID;
             RestoreDateTimeData(saveData.dateAndTime);
-            RestorePlayerData(saveData.playerData);
+            stateManager.RestorePlayerData(saveData.playerData);
             RestoreDungeonData(saveData.dungeonData);
-            RestoreEnemyData(saveData.enemyData);
-            RestoreLootContainerData(saveData.lootContainers);
+            stateManager.RestoreEnemyData(saveData.enemyData);
+            stateManager.RestoreLootContainerData(saveData.lootContainers);
+            RestoreBankData(saveData.bankAccounts);
+            RestoreBankDeedData(saveData.bankDeeds);
+            RestoreEscortingFacesData(saveData.escortingFaces);
+            stateManager.RestoreSceneCache(saveData.sceneCache);
         }
 
         void RestoreDateTimeData(DateAndTime_v1 dateTimeData)
@@ -861,108 +851,71 @@ namespace DaggerfallWorkshop.Game.Serialization
             DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.FromSeconds(dateTimeData.gameTime);
         }
 
-        void RestorePlayerData(PlayerData_v1 playerData)
-        {
-            if (playerData == null)
-                return;
-
-            if (serializablePlayer)
-                serializablePlayer.RestoreSaveData(playerData);
-        }
-
         void RestoreDungeonData(DungeonData_v1 dungeonData)
         {
             if (dungeonData == null)
                 return;
 
-            RestoreActionDoorData(dungeonData.actionDoors);
-            RestoreActionObjectData(dungeonData.actionObjects);
+            stateManager.RestoreActionDoorData(dungeonData.actionDoors);
+            stateManager.RestoreActionObjectData(dungeonData.actionObjects);
         }
 
-        void RestoreActionDoorData(ActionDoorData_v1[] actionDoors)
+        void RestoreBankData(BankRecordData_v1[] bankData)
         {
-            if (actionDoors == null || actionDoors.Length == 0)
+            DaggerfallBankManager.SetupAccounts();
+            DaggerfallBankManager.SetupHouses();    // Covers case when loading old save with no house data
+
+            if (bankData == null)
                 return;
 
-            for(int i = 0; i < actionDoors.Length; i++)
+            for (int i = 0; i < bankData.Length; i++)
             {
-                ulong key = actionDoors[i].loadID;
-                if (serializableActionDoors.ContainsKey(key))
-                {
-                    serializableActionDoors[key].RestoreSaveData(actionDoors[i]);
-                }
-            }
-        }
-
-        void RestoreActionObjectData(ActionObjectData_v1[] actionObjects)
-        {
-            if (actionObjects == null || actionObjects.Length == 0)
-                return;
-
-            for (int i = 0; i < actionObjects.Length; i++)
-            {
-                ulong key = actionObjects[i].loadID;
-                if (serializableActionObjects.ContainsKey(key))
-                {
-                    serializableActionObjects[key].RestoreSaveData(actionObjects[i]);
-                }
-            }
-        }
-
-        void RestoreEnemyData(EnemyData_v1[] enemies)
-        {
-            if (enemies == null || enemies.Length == 0)
-                return;
-
-            for (int i = 0; i < enemies.Length; i++)
-            {
-                ulong key = enemies[i].loadID;
-                if (serializableEnemies.ContainsKey(key))
-                {
-                    serializableEnemies[key].RestoreSaveData(enemies[i]);
-                }
-            }
-        }
-
-        void RestoreLootContainerData(LootContainerData_v1[] lootContainers)
-        {
-            if (lootContainers == null || lootContainers.Length == 0)
-                return;
-
-            for (int i = 0; i < lootContainers.Length; i++)
-            {
-                // Skip null containers
-                if (lootContainers[i] == null)
+                if (bankData[i].regionIndex < 0 || bankData[i].regionIndex >= DaggerfallBankManager.BankAccounts.Length)
                     continue;
 
-                // Restore loot containers
-                ulong key = lootContainers[i].loadID;
-                if (serializableLootContainers.ContainsKey(key))
-                {
-                    // Apply to known loot container that is part of scene build
-                    serializableLootContainers[key].RestoreSaveData(lootContainers[i]);
-                }
-                else
-                {
-                    // Add custom drop containers back to scene (e.g. dropped loot, slain foes)
-                    if (lootContainers[i].customDrop)
-                    {
-                        DaggerfallLoot customLootContainer = GameObjectHelper.CreateDroppedLootContainer(GameManager.Instance.PlayerObject, key);
-                        SerializableLootContainer serializableLootContainer = customLootContainer.GetComponent<SerializableLootContainer>();
-                        if (serializableLootContainer)
-                        {
-                            serializableLootContainer.RestoreSaveData(lootContainers[i]);
-                        }
-                    }
-                }
+                DaggerfallBankManager.BankAccounts[bankData[i].regionIndex] = bankData[i];
             }
+        }
+
+        void RestoreBankDeedData(BankDeedData_v1 deedData)
+        {
+            DaggerfallBankManager.OwnedShip = (deedData == null) ? ShipType.None : (ShipType) deedData.shipType;
+            if (deedData != null)
+                RestoreHousesData(deedData.houses);
+        }
+
+        void RestoreHousesData(HouseData_v1[] housesData)
+        {
+            DaggerfallBankManager.SetupHouses();
+
+            if (housesData == null)
+                return;
+
+            for (int i = 0; i < housesData.Length; i++)
+            {
+                if (housesData[i].regionIndex < 0 || housesData[i].regionIndex >= DaggerfallBankManager.Houses.Length)
+                    continue;
+
+                DaggerfallBankManager.Houses[housesData[i].regionIndex] = housesData[i];
+            }
+        }
+
+        void RestoreEscortingFacesData(FaceDetails[] escortingFaces)
+        {
+            if (DaggerfallUI.Instance.DaggerfallHUD == null)
+                return;
+
+            if (escortingFaces == null)
+                DaggerfallUI.Instance.DaggerfallHUD.EscortingFaces.ClearFaces();
+            else
+                DaggerfallUI.Instance.DaggerfallHUD.EscortingFaces.RestoreSaveData(escortingFaces);
         }
 
         #endregion
 
         #region Utility
 
-        IEnumerator SaveGame(string saveName, string path)
+        IEnumerator SaveGame(string saveName, string path, bool instantReload = false)
         {
             // Build save data
             SaveData_v1 saveData = BuildSaveData();
@@ -974,25 +927,77 @@ namespace DaggerfallWorkshop.Game.Serialization
             saveInfo.characterName = saveData.playerData.playerEntity.name;
             saveInfo.dateAndTime = saveData.dateAndTime;
 
+            // Build faction data
+            FactionData_v2 factionData = stateManager.GetPlayerFactionData();
+
+            // Build quest data
+            QuestMachine.QuestMachineData_v1 questData = QuestMachine.Instance.GetSaveData();
+
+            // Get discovery data
+            Dictionary<int, PlayerGPS.DiscoveredLocation> discoveryData = GameManager.Instance.PlayerGPS.GetDiscoverySaveData();
+
+            // Get conversation data
+            TalkManager.SaveDataConversation conversationData = GameManager.Instance.TalkManager.GetConversationSaveData();
+
+            // Get notebook data
+            PlayerNotebook.NotebookData_v1 notebookData = GameManager.Instance.PlayerEntity.Notebook.GetNotebookSaveData();
+
             // Serialize save data to JSON strings
             string saveDataJson = Serialize(saveData.GetType(), saveData);
             string saveInfoJson = Serialize(saveInfo.GetType(), saveInfo);
+            string factionDataJson = Serialize(factionData.GetType(), factionData);
+            string questDataJson = Serialize(questData.GetType(), questData);
+            string discoveryDataJson = Serialize(discoveryData.GetType(), discoveryData);
+            string conversationDataJson = Serialize(conversationData.GetType(), conversationData);
+            string notebookDataJson = Serialize(notebookData.GetType(), notebookData);
+
+            //// Attempt to hide UI for screenshot
+            //bool rawImageEnabled = false;
+            //UnityEngine.UI.RawImage rawImage = GUI.GetDiegeticCanvasRawImage();
+            //if (rawImage)
+            //{
+            //    rawImageEnabled = rawImage.enabled;
+            //    rawImage.enabled = false;
+            //}
 
             // Create screenshot for save
             // TODO: Hide UI for screenshot or use a different method
+            yield return new WaitForEndOfFrame();
             yield return new WaitForEndOfFrame();
             Texture2D screenshot = new Texture2D(Screen.width, Screen.height);
             screenshot.ReadPixels(new Rect(0, 0, Screen.width, Screen.height), 0, 0);
             screenshot.Apply();
 
+            //// Restore UI after screenshot
+            //if (rawImageEnabled)
+            //{
+            //    rawImage.enabled = true;
+            //}
+
             // Save data to files
             WriteSaveFile(Path.Combine(path, saveDataFilename), saveDataJson);
             WriteSaveFile(Path.Combine(path, saveInfoFilename), saveInfoJson);
+            WriteSaveFile(Path.Combine(path, factionDataFilename), factionDataJson);
+            WriteSaveFile(Path.Combine(path, questDataFilename), questDataJson);
+            WriteSaveFile(Path.Combine(path, discoveryDataFilename), discoveryDataJson);
+            WriteSaveFile(Path.Combine(path, conversationDataFilename), conversationDataJson);
+            WriteSaveFile(Path.Combine(path, notebookDataFilename), notebookDataJson);
+
+            // Save backstory text
+            if (!File.Exists(Path.Combine(path, bioFileName)))
+            {
+                StreamWriter file = new StreamWriter(Path.Combine(path, bioFileName).ToString());
+                foreach (string line in GameManager.Instance.PlayerEntity.BackStory)
+                {
+                    file.WriteLine(line);
+                }
+                file.Close();
+            }
 
             // Save automap state
             try
             {
-                Dictionary<string, DaggerfallAutomap.AutomapGeometryDungeonState> automapState = GameManager.Instance.Automap.GetState();
+                Dictionary<string, Automap.AutomapGeometryDungeonState> automapState = GameManager.Instance.InteriorAutomap.GetState();
                 string automapDataJson = Serialize(automapState.GetType(), automapState);
                 WriteSaveFile(Path.Combine(path, automapDataFilename), automapDataJson);
             }
@@ -1000,6 +1005,24 @@ namespace DaggerfallWorkshop.Game.Serialization
             {
                 string message = string.Format("Failed to save automap state. Message: {0}", ex.Message);
                 Debug.Log(message);
+            }
+
+            // Save mod data
+            if (ModManager.Instance != null)
+            {
+                foreach (Mod mod in ModManager.Instance.GetAllModsWithSaveData())
+                {
+                    object modData = mod.SaveDataInterface.GetSaveData();
+                    if (modData != null)
+                    {
+                        string modDataJson = Serialize(modData.GetType(), modData);
+                        WriteSaveFile(Path.Combine(path, GetModDataFilename(mod)), modDataJson);
+                    }
+                    else
+                    {
+                        File.Delete(Path.Combine(path, GetModDataFilename(mod)));
+                    }
+                }
             }
 
             // Save screenshot
@@ -1011,91 +1034,130 @@ namespace DaggerfallWorkshop.Game.Serialization
 
             // Notify
             DaggerfallUI.Instance.PopupMessage(HardStrings.gameSaved);
+
+            // Reload this save instantly if requested
+            if (instantReload)
+                Load(saveData.playerData.playerEntity.name, saveName);
         }
 
-        IEnumerator LoadGame(string saveName, string path)
+        IEnumerator LoadGame(string path)
         {
             GameManager.Instance.PlayerDeath.ClearDeathAnimation();
             GameManager.Instance.PlayerMotor.CancelMovement = true;
             InputManager.Instance.ClearAllActions();
+            QuestMachine.Instance.ClearState();
+            stateManager.ClearSceneCache();
+            PlayerEntity playerEntity = GameManager.Instance.PlayerEntity;
+            playerEntity.Reset();
 
             // Read save data from files
             string saveDataJson = ReadSaveFile(Path.Combine(path, saveDataFilename));
+            string factionDataJson = ReadSaveFile(Path.Combine(path, factionDataFilename));
+            string questDataJson = ReadSaveFile(Path.Combine(path, questDataFilename));
+            string discoveryDataJson = ReadSaveFile(Path.Combine(path, discoveryDataFilename));
+            string conversationDataJson = ReadSaveFile(Path.Combine(path, conversationDataFilename));
+            string notebookDataJson = ReadSaveFile(Path.Combine(path, notebookDataFilename));
+
+            // Load backstory text
+            playerEntity.BackStory = new List<string>();
+            if (File.Exists(Path.Combine(path, bioFileName)))
+            {
+                StreamReader file = new StreamReader(Path.Combine(path, bioFileName).ToString());
+                string line;
+                while ((line = file.ReadLine()) != null)
+                {
+                    playerEntity.BackStory.Add(line);
+                }
+                file.Close();
+            }
 
             // Deserialize JSON strings
             SaveData_v1 saveData = Deserialize(typeof(SaveData_v1), saveDataJson) as SaveData_v1;
 
             // Must have a serializable player
-            if (!serializablePlayer)
+            if (!stateManager.SerializablePlayer)
                 yield break;
+
+            // Call start load event
+            RaiseOnStartLoadEvent(saveData);
 
             // Immediately set date so world is loaded with correct season
             RestoreDateTimeData(saveData.dateAndTime);
 
+            // Restore discovery data
+            if (!string.IsNullOrEmpty(discoveryDataJson))
+            {
+                Dictionary<int, PlayerGPS.DiscoveredLocation> discoveryData =
+                    Deserialize(typeof(Dictionary<int, PlayerGPS.DiscoveredLocation>), discoveryDataJson) as Dictionary<int, PlayerGPS.DiscoveredLocation>;
+                GameManager.Instance.PlayerGPS.RestoreDiscoveryData(discoveryData);
+            }
+            else
+            {
+                // Clear discovery data when not in save, or live state will be retained from previous session
+                GameManager.Instance.PlayerGPS.ClearDiscoveryData();
+            }
+
             // Must have PlayerEnterExit to respawn player at saved location
-            PlayerEnterExit playerEnterExit = serializablePlayer.GetComponent<PlayerEnterExit>();
+            PlayerEnterExit playerEnterExit = stateManager.SerializablePlayer.GetComponent<PlayerEnterExit>();
             if (!playerEnterExit)
                 yield break;
 
-            // Check exterior doors are included in save, we need these to exit building
-            bool hasExteriorDoors;
-            if (saveData.playerData.playerPosition.exteriorDoors == null || saveData.playerData.playerPosition.exteriorDoors.Length == 0)
-                hasExteriorDoors = false;
-            else
-                hasExteriorDoors = true;
-
-            // Raise reposition flag if terrain sampler changed
-            // This is required as changing terrain samplers will invalidate serialized player coordinates
-            bool repositionPlayer = false;
-            if (saveData.playerData.playerPosition.terrainSamplerName != DaggerfallUnity.Instance.TerrainSampler.ToString() ||
-                saveData.playerData.playerPosition.terrainSamplerVersion != DaggerfallUnity.Instance.TerrainSampler.Version)
+            // Restore building summary, house ownership, and guild membership early for interior layout code
+            if (saveData.playerData.playerPosition.insideBuilding)
             {
-                repositionPlayer = true;
-                if (DaggerfallUI.Instance.DaggerfallHUD != null)
-                    DaggerfallUI.Instance.DaggerfallHUD.PopupText.AddText("Terrain sampler changed. Repositioning player.");
+                playerEnterExit.BuildingDiscoveryData = saveData.playerData.playerPosition.buildingDiscoveryData;
+                playerEnterExit.IsPlayerInsideOpenShop = saveData.playerData.playerPosition.insideOpenShop;
+                if (saveData.bankDeeds != null)
+                    RestoreHousesData(saveData.bankDeeds.houses);
+                GameManager.Instance.GuildManager.RestoreMembershipData(saveData.playerData.guildMemberships);
             }
 
-            // Raise reposition flag if player is supposed to start indoors but building has no doors
-            if (saveData.playerData.playerPosition.insideBuilding && !hasExteriorDoors)
+            // Restore faction data to player entity
+            // This is done early as later objects may require faction information on restore
+            if (!string.IsNullOrEmpty(factionDataJson))
             {
-                repositionPlayer = true;
-                if (DaggerfallUI.Instance.DaggerfallHUD != null)
-                    DaggerfallUI.Instance.DaggerfallHUD.PopupText.AddText("Building has no exterior doors. Repositioning player.");
-            }
-
-            // Start the respawn process based on saved player location
-            if (saveData.playerData.playerPosition.insideDungeon && !repositionPlayer)
-            {
-                // Start in dungeon
-                playerEnterExit.RespawnPlayer(
-                    saveData.playerData.playerPosition.worldPosX,
-                    saveData.playerData.playerPosition.worldPosZ,
-                    true);
-            }
-            else if (saveData.playerData.playerPosition.insideBuilding && hasExteriorDoors && !repositionPlayer)
-            {
-                // Start in building
-                playerEnterExit.RespawnPlayer(
-                    saveData.playerData.playerPosition.worldPosX,
-                    saveData.playerData.playerPosition.worldPosZ,
-                    saveData.playerData.playerPosition.insideDungeon,
-                    saveData.playerData.playerPosition.insideBuilding,
-                    saveData.playerData.playerPosition.exteriorDoors);
+                FactionData_v2 factionData = Deserialize(typeof(FactionData_v2), factionDataJson) as FactionData_v2;
+                stateManager.RestoreFactionData(factionData);
+                Debug.Log("LoadGame() restored faction state from save.");
             }
             else
             {
-                // Start outside
-                playerEnterExit.RespawnPlayer(
-                    saveData.playerData.playerPosition.worldPosX,
-                    saveData.playerData.playerPosition.worldPosZ,
-                    false,
-                    false,
-                    null,
-                    repositionPlayer);
+                Debug.Log("LoadGame() did not find saved faction data. Player will resume with default faction state.");
             }
+
+            // Restore quest machine state
+            if (!string.IsNullOrEmpty(questDataJson))
+            {
+                QuestMachine.QuestMachineData_v1 questData = Deserialize(typeof(QuestMachine.QuestMachineData_v1), questDataJson) as QuestMachine.QuestMachineData_v1;
+                QuestMachine.Instance.RestoreSaveData(questData);
+            }
+
+            // Restore conversation data (must be done after quest data restoration)
+            if (!string.IsNullOrEmpty(conversationDataJson))
+            {
+                TalkManager.SaveDataConversation conversationData = Deserialize(typeof(TalkManager.SaveDataConversation), conversationDataJson) as TalkManager.SaveDataConversation;
+                GameManager.Instance.TalkManager.RestoreConversationData(conversationData);
+            }
+            else
+            {
+                GameManager.Instance.TalkManager.RestoreConversationData(null);
+            }
+
+            // Restore notebook data
+            if (!string.IsNullOrEmpty(notebookDataJson))
+            {
+                PlayerNotebook.NotebookData_v1 notebookData = Deserialize(typeof(PlayerNotebook.NotebookData_v1), notebookDataJson) as PlayerNotebook.NotebookData_v1;
+                playerEntity.Notebook.RestoreNotebookData(notebookData);
+            }
+
+            // Restore player position to world
+            playerEnterExit.RestorePositionHelper(saveData.playerData.playerPosition, true);
+
+            //Restore Travel Map settings
+            DaggerfallUI.Instance.DfTravelMapWindow.SetTravelMapFromSaveData(saveData.travelMapData);
 
             // Smash to black while respawning
-            DaggerfallUI.Instance.SmashHUDToBlack();
+            DaggerfallUI.Instance.FadeBehaviour.SmashHUDToBlack();
 
             // Keep yielding frames until world is ready again
             while (playerEnterExit.IsRespawning)
@@ -1113,13 +1175,13 @@ namespace DaggerfallWorkshop.Game.Serialization
             try
             {
                 string automapDataJson = ReadSaveFile(Path.Combine(path, automapDataFilename));
-                Dictionary<string, DaggerfallAutomap.AutomapGeometryDungeonState> automapState = null;
+                Dictionary<string, Automap.AutomapGeometryDungeonState> automapState = null;
 
                 if (!string.IsNullOrEmpty(automapDataJson))
-                    automapState = Deserialize(typeof(Dictionary<string, DaggerfallAutomap.AutomapGeometryDungeonState>), automapDataJson) as Dictionary<string, DaggerfallAutomap.AutomapGeometryDungeonState>;
+                    automapState = Deserialize(typeof(Dictionary<string, Automap.AutomapGeometryDungeonState>), automapDataJson) as Dictionary<string, Automap.AutomapGeometryDungeonState>;
 
                 if (automapState != null)
-                    GameManager.Instance.Automap.SetState(automapState);
+                    GameManager.Instance.InteriorAutomap.SetState(automapState);
             }
             catch (Exception ex)
             {
@@ -1127,14 +1189,55 @@ namespace DaggerfallWorkshop.Game.Serialization
                 Debug.Log(message);
             }
 
+            // Clear any orphaned quest items
+            RemoveAllOrphanedItems();
+
+            // Check mod manager is available
+            if (ModManager.Instance != null)
+            {
+                // Restore mod data
+                foreach (Mod mod in ModManager.Instance.GetAllModsWithSaveData())
+                {
+                    string modDataPath = Path.Combine(path, GetModDataFilename(mod));
+                    object modData;
+                    if (File.Exists(modDataPath))
+                        modData = Deserialize(mod.SaveDataInterface.SaveDataType, ReadSaveFile(modDataPath));
+                    else
+                        modData = mod.SaveDataInterface.NewSaveData();
+                    mod.SaveDataInterface.RestoreSaveData(modData);
+                }
+            }
+
             // Lower load in progress flag
             loadInProgress = false;
 
             // Fade out from black
-            DaggerfallUI.Instance.FadeHUDFromBlack(1.5f);
+            DaggerfallUI.Instance.FadeBehaviour.FadeHUDFromBlack(1.0f);
 
             // Raise OnLoad event
             RaiseOnLoadEvent(saveData);
+        }
+
+        /// <summary>
+        /// Looks for orphaned items (e.g. quest no longer active or invalid template) remaining in player item collections.
+        /// </summary>
+        void RemoveAllOrphanedItems()
+        {
+            int count = 0;
+            Entity.PlayerEntity playerEntity = GameManager.Instance.PlayerEntity;
+            count += playerEntity.Items.RemoveOrphanedItems();
+            count += playerEntity.WagonItems.RemoveOrphanedItems();
+            count += playerEntity.OtherItems.RemoveOrphanedItems();
+            if (count > 0)
+            {
+                Debug.LogFormat("Removed {0} orphaned items.", count);
+            }
+        }
+
+        private static string GetModDataFilename(Mod mod)
+        {
+            // Use filename because title may contains invalid path chars.
+            return string.Format("mod_{0}.txt", mod.FileName);
         }
 
         #endregion
@@ -1148,6 +1251,15 @@ namespace DaggerfallWorkshop.Game.Serialization
         {
             if (OnSave != null)
                 OnSave(saveData);
+        }
+
+        // OnStartLoad
+        public delegate void OnStartLoadEventHandler(SaveData_v1 saveData);
+        public static event OnStartLoadEventHandler OnStartLoad;
+        protected virtual void RaiseOnStartLoadEvent(SaveData_v1 saveData)
+        {
+            if (OnStartLoad != null)
+                OnStartLoad(saveData);
         }
 
         // OnLoad

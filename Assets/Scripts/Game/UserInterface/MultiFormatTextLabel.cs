@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -25,16 +25,18 @@ namespace DaggerfallWorkshop.Game.UserInterface
     /// </summary>
     public class MultiFormatTextLabel : BaseScreenComponent
     {
-        const int tabWidth = 45;
+        const int tabWidth = 35;
 
-        PixelFont font;
+        DaggerfallFont font;
+        float textScale = 1.0f; // scale text 
         int rowLeading = 0;
         Vector2 shadowPosition = DaggerfallUI.DaggerfallDefaultShadowPos;
         Color textColor = DaggerfallUI.DaggerfallDefaultTextColor;
+        Color highlightColor = DaggerfallUI.DaggerfallHighlightTextColor;
         Color shadowColor = DaggerfallUI.DaggerfallDefaultShadowColor;
         HorizontalAlignment textAlignment = HorizontalAlignment.None;
         List<TextLabel> labels = new List<TextLabel>();
-        TextLabel lastLabel;
+        TextLabel lastLabel = new TextLabel();
 
         int totalWidth = 0;
         int totalHeight = 0;
@@ -42,10 +44,52 @@ namespace DaggerfallWorkshop.Game.UserInterface
         int cursorY = 0;
         int tabStop = 0;
 
-        public PixelFont Font
+        bool wrapText = false;
+        bool wrapWords = false;
+        int maxTextWidth = 0;
+
+        int minTextureDimTextLabel = TextLabel.limitMinTextureDim; // set this with property MinTextureDim to higher values if you experience scaling issues with small texts (e.g. inventory infopanel)
+
+        public DaggerfallFont Font
         {
             get { return GetFont(); }
             set { font = value; }
+        }
+
+        public bool WrapText
+        {
+            get { return wrapText; }
+            set { wrapText = value; }
+        }
+
+        public bool WrapWords
+        {
+            get { return wrapWords; }
+            set { wrapWords = value; }
+        }
+
+        public int MaxTextWidth
+        {
+            get { return maxTextWidth; }
+            set { maxTextWidth = value; }
+        }
+
+        /// <summary>
+        /// used to set min texture dims of textlabel to higher values if there would be aspect or scaling issues with small texts otherwise (e.g. some single-lined textlabels in inventory infopanel)
+        /// </summary>
+        public int MinTextureDimTextLabel
+        {
+            get { return minTextureDimTextLabel; }
+            set { minTextureDimTextLabel = Math.Max(TextLabel.limitMinTextureDim, value); }
+        }
+
+        /// <summary>
+        /// set text scale factor - 1.0f is default value, 0.5f is half sized text, 2.0f double sized text and so on
+        /// </summary>
+        public float TextScale
+        {
+            get { return textScale; }
+            set { textScale = value; }
         }
 
         /// <summary>
@@ -69,6 +113,12 @@ namespace DaggerfallWorkshop.Game.UserInterface
             set { textColor = value; }
         }
 
+        public Color HighlightColor
+        {
+            get { return highlightColor; }
+            set { highlightColor = value; }
+        }
+
         public Color ShadowColor
         {
             get { return shadowColor; }
@@ -79,6 +129,11 @@ namespace DaggerfallWorkshop.Game.UserInterface
         {
             get { return textAlignment; }
             set { textAlignment = value; }
+        }
+
+        public void ResizeY(float newSize)
+        {
+            Size = new Vector2(totalWidth, newSize);
         }
 
         public override void Draw()
@@ -117,7 +172,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
             string line;
             while ((line = reader.ReadLine()) != null)
             {
-                AddTextLabel(line);
+                AddTextLabel(line, GetFont(), DaggerfallUI.DaggerfallDefaultTextColor);
                 NewLine();
             }
         }
@@ -129,20 +184,25 @@ namespace DaggerfallWorkshop.Game.UserInterface
         /// </summary>
         /// <param name="text">Text for this label.</param>
         /// <param name="font">Font for this label.</param>
+        /// <param name="color">Text color for this label.</param>
         /// <returns>TextLabel.</returns>
-        public TextLabel AddTextLabel(string text, PixelFont font = null)
+        public TextLabel AddTextLabel(string text, DaggerfallFont font, Color color)
         {
-            if (font == null)
-                font = GetFont();
-
             TextLabel textLabel = new TextLabel();
             textLabel.AutoSize = AutoSizeModes.None;
+            textLabel.MinTextureDim = minTextureDimTextLabel;
             textLabel.Font = font;
             textLabel.Position = new Vector2(cursorX, cursorY);
+            textLabel.WrapText = wrapText;
+            textLabel.WrapWords = wrapWords;
+            textLabel.TextScale = TextScale;
+
+            // Use max width if it has been specified
+            if (maxTextWidth > 0)
+                textLabel.MaxWidth = maxTextWidth;
             textLabel.Text = text;
             textLabel.Parent = this;
-
-            textLabel.TextColor = TextColor;
+            textLabel.TextColor = color;
             textLabel.ShadowColor = ShadowColor;
             textLabel.ShadowPosition = ShadowPosition;
 
@@ -163,8 +223,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
         public void NewLine()
         {
             cursorX = 0;
-            cursorY += LineHeight;
-            totalHeight += LineHeight;
+            cursorY += lastLabel.TextHeight + rowLeading;
             tabStop = 0;
         }
 
@@ -180,6 +239,14 @@ namespace DaggerfallWorkshop.Game.UserInterface
             cursorY = 0;
         }
 
+        public int LineHeight
+        {
+            get {
+                int lineHeight = lastLabel.TextHeight / lastLabel.NumTextLines + rowLeading;
+                return lineHeight;
+            }
+        }
+
         #region Protected Methods
 
         protected virtual void SetRowLeading(int amount)
@@ -190,11 +257,6 @@ namespace DaggerfallWorkshop.Game.UserInterface
         #endregion
 
         #region Private Methods
-
-        int LineHeight
-        {
-            get { return GetFont().GlyphHeight + rowLeading; }
-        }
 
         void LayoutTextElements(TextFile.Token[] tokens)
         {
@@ -216,8 +278,10 @@ namespace DaggerfallWorkshop.Game.UserInterface
                     case TextFile.Formatting.NewLine:
                         NewLine();
                         break;
+                    case TextFile.Formatting.Nothing:
                     case TextFile.Formatting.JustifyLeft:
                         NewLine();
+                        totalHeight += LineHeight; // Justify left adds to height regardless of there being anything afterwards
                         break;
                     case TextFile.Formatting.JustifyCenter:
                         if (lastLabel != null)
@@ -238,7 +302,18 @@ namespace DaggerfallWorkshop.Game.UserInterface
                         }
                         break;
                     case TextFile.Formatting.Text:
-                        AddTextLabel(token.text, font);
+                        AddTextLabel(token.text, font, TextColor);
+                        break;
+                    case TextFile.Formatting.TextHighlight:
+                        AddTextLabel(token.text, font, HighlightColor);
+                        break;
+                    case TextFile.Formatting.TextQuestion:
+                        AddTextLabel(token.text, font, DaggerfallUI.DaggerfallQuestionTextColor);
+                        break;
+                    case TextFile.Formatting.TextAnswer:
+                        AddTextLabel(token.text, font, DaggerfallUI.DaggerfallAnswerTextColor);
+                        break;
+                    case TextFile.Formatting.InputCursorPositioner:
                         break;
                     default:
                         Debug.Log("MultilineTextLabel: Unknown formatting token: " + (int)token.formatting);
@@ -250,13 +325,16 @@ namespace DaggerfallWorkshop.Game.UserInterface
                     int rowWidth = (int)lastLabel.Position.x + lastLabel.TextWidth;
                     if (rowWidth > totalWidth)
                         totalWidth = rowWidth;
+                    int rowHeight = (int)lastLabel.Position.y + lastLabel.TextHeight;
+                    if (rowHeight > totalHeight)
+                        totalHeight = rowHeight;
                 }
             }
 
             Size = new Vector2(totalWidth, totalHeight);
         }
 
-        PixelFont GetFont()
+        DaggerfallFont GetFont()
         {
             if (font == null)
                 font = DaggerfallUI.DefaultFont;

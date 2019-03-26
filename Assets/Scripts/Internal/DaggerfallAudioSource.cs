@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -54,6 +54,10 @@ namespace DaggerfallWorkshop
         // Can only be flagged using LoopOnDistance preset.
         private bool playerCheck = false;
 
+        // Sets looping sound to only play randomly and on a slower update matched to classic.
+        // Only used for animal sounds.
+        private bool playRandomly = false;
+
         public bool IsReady
         {
             get { return ReadyCheck(); }
@@ -83,8 +87,15 @@ namespace DaggerfallWorkshop
             // Handle player checks
             if (playerCheck && audioSource && player)
             {
-                bool playerInRange = (Vector3.Distance(transform.position, player.transform.position) < audioSource.maxDistance);
+                bool playerInRange = (Vector3.Distance(transform.position, player.transform.position) <= audioSource.maxDistance);
+
                 audioSource.enabled = playerInRange;
+                // Allows volume to be adjusted without reloading game.
+                audioSource.volume = DaggerfallUnity.Settings.SoundVolume;
+
+                // Handle random play
+                if (audioSource.enabled && playRandomly && Game.GameManager.ClassicUpdate && DFRandom.rand() <= 100)
+                    audioSource.Play();
             }
         }
 
@@ -101,7 +112,8 @@ namespace DaggerfallWorkshop
             {
                 PreviewID = (int)dfUnity.SoundReader.GetSoundID(PreviewIndex);
                 PreviewClip = (SoundClips)PreviewIndex;
-                audioSource.PlayOneShot(dfUnity.SoundReader.GetAudioClip(PreviewIndex));
+                AudioClip clip = dfUnity.SoundReader.GetAudioClip(PreviewIndex);
+                audioSource.PlayOneShotWhenReady(clip, 1.0f);
             }
         }
 
@@ -181,7 +193,7 @@ namespace DaggerfallWorkshop
                 if (clip)
                 {
                     audioSource.spatialBlend = spatialBlend;
-                    audioSource.PlayOneShot(clip, volumeScale);
+                    audioSource.PlayOneShotWhenReady(clip, volumeScale);
                 }
             }
         }
@@ -201,6 +213,14 @@ namespace DaggerfallWorkshop
         {
             int soundIndex = dfUnity.SoundReader.GetSoundIndex(soundID);
             PlayOneShot(soundIndex, spatialBlend, volumeScale);
+        }
+
+        /// <summary>
+        /// Check if AudioSource is playing a clip.
+        /// </summary>
+        public bool IsPlaying()
+        {
+            return (audioSource) ? audioSource.isPlaying : false;
         }
 
         /// <summary>
@@ -247,21 +267,31 @@ namespace DaggerfallWorkshop
                     audioSource.playOnAwake = false;
                     audioSource.loop = false;
                     playerCheck = false;
+                    playRandomly = false;
                     break;
                 case AudioPresets.LoopOnAwake:
                     audioSource.playOnAwake = true;
                     audioSource.loop = true;
                     playerCheck = false;
+                    playRandomly = false;
                     break;
                 case AudioPresets.LoopOnDemand:
                     audioSource.playOnAwake = false;
                     audioSource.loop = true;
                     playerCheck = false;
+                    playRandomly = false;
                     break;
                 case AudioPresets.LoopIfPlayerNear:
                     audioSource.playOnAwake = true;
                     audioSource.loop = true;
                     playerCheck = true;
+                    playRandomly = false;
+                    break;
+                case AudioPresets.PlayRandomlyIfPlayerNear:
+                    audioSource.playOnAwake = false;
+                    audioSource.loop = false;
+                    playerCheck = true;
+                    playRandomly = true;
                     break;
                 default:
                     break;
@@ -274,7 +304,10 @@ namespace DaggerfallWorkshop
             // Manually start sound if playOnAwake true.
             // This is necessary as sound is procedurally created after awake.
             if (audioSource.playOnAwake)
+            {
+                audioSource.volume = DaggerfallUnity.Settings.SoundVolume;
                 audioSource.Play();
+            }
         }
 
         private bool ReadyCheck()

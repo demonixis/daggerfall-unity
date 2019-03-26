@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -48,13 +48,13 @@ namespace DaggerfallWorkshop
         bool showImageFoldout = false;
 
         Dictionary<int, FactionFile.FactionData> factionDict = new Dictionary<int, FactionFile.FactionData>();
-        Dictionary<int, bool> factionFoloutDict = new Dictionary<int, bool>();
+        Dictionary<int, bool> factionFoldoutDict = new Dictionary<int, bool>();
 
         int lastSelectedSave = -1;
         int selectedSave = 0;
 
         Vector2 scrollPos;
-        bool showFactionsFoldout = true;
+        bool showFactionsFoldout = false;
         bool showItemsFoldout = false;
         bool showSaveTreeFoldout = false;
 
@@ -120,7 +120,7 @@ namespace DaggerfallWorkshop
                     EditorGUILayout.Space();
                     showSaveTreeFoldout = GUILayoutHelper.Foldout(showSaveTreeFoldout, new GUIContent("SaveTree"), () =>
                     {
-                        EditorGUILayout.HelpBox("Temporarily Filtering out records of type UnknownTownLink and UnknownItemRecord to keep list manageable.", MessageType.Info);
+                        EditorGUILayout.HelpBox("Temporarily Filtering out records of type Door and Goods to keep list manageable.", MessageType.Info);
 
                         DisplaySaveTree(currentSaveTree.RootRecord);
                     });
@@ -153,6 +153,8 @@ namespace DaggerfallWorkshop
             if (currentSaveTree == null)
                 return;
 
+            SaveTreeBaseRecord positionRecord = currentSaveTree.FindRecord(RecordTypes.CharacterPositionRecord);
+
             EditorGUILayout.Space();
             GUILayoutHelper.Horizontal(() =>
             {
@@ -161,18 +163,17 @@ namespace DaggerfallWorkshop
             });
             GUILayoutHelper.Horizontal(() =>
             {
-                string positionText = string.Format("X={0}, Y={1}, Z={2}, Base={3}",
-                    currentSaveTree.Header.CharacterPosition.Position.WorldX,
-                    currentSaveTree.Header.CharacterPosition.Position.YOffset,
-                    currentSaveTree.Header.CharacterPosition.Position.WorldZ,
-                    currentSaveTree.Header.CharacterPosition.Position.YBase);
+                string positionText = string.Format("X={0}, Y={1}, Z={2}",
+                    positionRecord.RecordRoot.Position.WorldX,
+                    positionRecord.RecordRoot.Position.WorldY,
+                    positionRecord.RecordRoot.Position.WorldZ);
 
                 EditorGUILayout.LabelField(new GUIContent("Player Position", "Position of player in the world."), GUILayout.Width(EditorGUIUtility.labelWidth - 4));
                 EditorGUILayout.SelectableLabel(positionText, EditorStyles.textField, GUILayout.Height(EditorGUIUtility.singleLineHeight));
             });
             GUILayoutHelper.Horizontal(() =>
             {
-                DFPosition mapPixel = MapsFile.WorldCoordToMapPixel(currentSaveTree.Header.CharacterPosition.Position.WorldX, currentSaveTree.Header.CharacterPosition.Position.WorldZ);
+                DFPosition mapPixel = MapsFile.WorldCoordToMapPixel(positionRecord.RecordRoot.Position.WorldX, positionRecord.RecordRoot.Position.WorldZ);
                 string mapPixelText = string.Format("X={0}, Y={1}", mapPixel.X, mapPixel.Y);
 
                 EditorGUILayout.LabelField(new GUIContent("Player Map Pixel", "Position of player on small map."), GUILayout.Width(EditorGUIUtility.labelWidth - 4));
@@ -188,8 +189,8 @@ namespace DaggerfallWorkshop
             });
             GUILayoutHelper.Horizontal(() =>
             {
-                EditorGUILayout.LabelField(new GUIContent("LocationDetail records"), GUILayout.Width(EditorGUIUtility.labelWidth - 4));
-                EditorGUILayout.SelectableLabel(currentSaveTree.LocationDetail.RecordCount.ToString(), EditorStyles.textField, GUILayout.Height(EditorGUIUtility.singleLineHeight));
+                EditorGUILayout.LabelField(new GUIContent("Player Environment"), GUILayout.Width(EditorGUIUtility.labelWidth - 4));
+                EditorGUILayout.SelectableLabel(((Environments)currentSaveTree.Header.Environment).ToString(), EditorStyles.textField, GUILayout.Height(EditorGUIUtility.singleLineHeight));
             });
             GUILayoutHelper.Horizontal(() =>
             {
@@ -234,7 +235,7 @@ namespace DaggerfallWorkshop
             });
             GUILayoutHelper.Horizontal(() =>
             {
-                string health = string.Format("{0} / {1}", characterRecord.ParsedData.currentHealth, characterRecord.ParsedData.startingHealth);
+                string health = string.Format("{0} / {1}", characterRecord.ParsedData.currentHealth, characterRecord.ParsedData.maxHealth);
                 EditorGUILayout.LabelField(new GUIContent("Health"), GUILayout.Width(EditorGUIUtility.labelWidth - 4));
                 EditorGUILayout.SelectableLabel(health, EditorStyles.textField, GUILayout.Height(EditorGUIUtility.singleLineHeight));
             });
@@ -250,10 +251,10 @@ namespace DaggerfallWorkshop
                 FactionFile.FactionData faction = kvp.Value;
                 string textLabel = faction.name;
 
-                if (!factionFoloutDict.ContainsKey(faction.id))
-                    factionFoloutDict.Add(faction.id, false);
+                if (!factionFoldoutDict.ContainsKey(faction.id))
+                    factionFoldoutDict.Add(faction.id, false);
 
-                factionFoloutDict[faction.id] = GUILayoutHelper.Foldout(factionFoloutDict[faction.id], new GUIContent(textLabel), () =>
+                factionFoldoutDict[faction.id] = GUILayoutHelper.Foldout(factionFoldoutDict[faction.id], new GUIContent(textLabel), () =>
                 {
                     GUILayoutHelper.Indent(() =>
                     {
@@ -362,7 +363,7 @@ namespace DaggerfallWorkshop
             for (int i = 0; i < parent.Children.Count; i++)
             {
                 RecordTypes recordType = parent.Children[i].RecordType;
-                if (recordType == RecordTypes.UnknownTownLink || recordType == RecordTypes.UnknownItemRecord)
+                if (recordType == RecordTypes.Door || recordType == RecordTypes.Goods)
                     continue;
 
                 string textLabel = recordType.ToString();
@@ -384,12 +385,15 @@ namespace DaggerfallWorkshop
                     }
                 }
 
-                // Tag wagon container
+                // Tag container types
                 if (recordType == RecordTypes.Container && parent.RecordType == RecordTypes.Character)
                 {
+                    string[] tags = {" [Weapons & Armor]", " [Magic Items]", " [Clothing & Misc]", " [Ingredients]", " [Wagon]",
+                                     " [House]", " [Ship]", " [Tavern Rooms]", " [Item Repairers]"};
+
                     ContainerRecord containerRecord = (ContainerRecord)parent.Children[i];
-                    if (containerRecord.IsWagon)
-                        textLabel += " [Wagon]";
+
+                    textLabel += tags[containerRecord.RecordRoot.SpriteIndex];
                 }
 
                 EditorGUILayout.LabelField(textLabel);
@@ -410,7 +414,7 @@ namespace DaggerfallWorkshop
             uint[] equippedItems = characterRecord.ParsedData.equippedItems;
             for (int i = 0; i < equippedItems.Length; i++)
             {
-                if (equippedItems[i] == (record.RecordRoot.RecordID >> 8))
+                if (equippedItems[i] == record.RecordRoot.RecordID)
                     return i;
             }
 
@@ -467,7 +471,7 @@ namespace DaggerfallWorkshop
                 return false;
 
             if (factionFile == null)
-                factionFile = new FactionFile(Path.Combine(dfUnity.Arena2Path, FactionFile.Filename), FileUsage.UseMemory, true);
+                factionFile = new FactionFile(dfUnity.ContentReader.GetFactionFilePath(), FileUsage.UseMemory, true);
 
             if (saveGames == null || saveTrees == null || saveNames == null)
             {
@@ -482,7 +486,7 @@ namespace DaggerfallWorkshop
                     {
                         if (saveGames.HasSave(i))
                         {
-                            saveGames.OpenSave(i);
+                            saveGames.OpenSave(i, false);
                             saveTrees[i] = saveGames.SaveTree;
                             saveVars[i] = saveGames.SaveVars;
                             saveNames[i] = new GUIContent(saveGames.SaveName);
@@ -495,6 +499,35 @@ namespace DaggerfallWorkshop
                             saveVars[i] = null;
                             saveTextures[i] = null;
                             saveNames[i] = new GUIContent("Empty");
+                        }
+                    }
+                }
+
+                // Prevent duplicate names so save games aren't automatically removed from the Save Select GUI
+                for (int i = 0; i < saveNames.Length; i++)
+                {
+                    int duplicateCount = 0;
+                    for (int j = i + 1; j < saveNames.Length; j++)
+                    {
+                        if (saveNames[j].text == saveNames[i].text)
+                        {
+                            bool unique = false;
+                            while (!unique)
+                            {
+                                unique = true;
+                                string replaceText = saveNames[j].text + "(" + ++duplicateCount + ")";
+                                for (int k = 0; k < saveNames.Length; k++)
+                                {
+                                    if (saveNames[k].text == replaceText)
+                                    {
+                                        unique = false;
+                                        break;
+                                    }
+                                }
+
+                                if (unique)
+                                    saveNames[j].text = replaceText;
+                            }
                         }
                     }
                 }
