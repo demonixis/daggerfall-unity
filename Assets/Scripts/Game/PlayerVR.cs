@@ -1,41 +1,36 @@
-﻿// Project:         Daggerfall Tools For Unity
+// Project:         Daggerfall Tools For Unity
 // Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
-// Original Author: Gavin Clayton (interkarma@dfworkshop.net)
-// Contributors:    Yannick Comte (comte.yannick@gmail.com)
+// Original Author: Yannick Comte (comte.yannick@gmail.com)
+// Contributors:    
 // 
 // Notes:
 //
 
 using UnityEngine;
-using UnityEngine.VR;
+using UnityEngine.XR;
 
 namespace DaggerfallWorkshop.Game
 {
     public class PlayerVR : MonoBehaviour
     {
-        public static bool VREnabled
+        public static bool XREnabled
         {
-            get { return VRSettings.enabled; }
+            get { return XRSettings.enabled; }
         }
 
         void Start()
         {
-            if (VRSettings.enabled)
+            if (XRSettings.enabled)
             {
                 var camera = Camera.main;
                 camera.fieldOfView = 90.0f;
                 camera.clearFlags = CameraClearFlags.SolidColor;
 
-                var fogEffect = camera.GetComponent<UnityStandardAssets.ImageEffects.GlobalFog>();
-                if (fogEffect != null)
-                    fogEffect.enabled = false;
-
-                var mouseLook = camera.GetComponent<PlayerMouseLook>();
-                if (mouseLook != null)
-                    mouseLook.sensitivity = new Vector2(mouseLook.sensitivity.x, 0.0f);
+                XRDevice.SetTrackingSpaceType(TrackingSpaceType.Stationary);
+                InputTracking.Recenter();
             }
             else
                 Destroy(this);

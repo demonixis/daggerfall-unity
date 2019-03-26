@@ -1,17 +1,17 @@
-﻿// Project:         Daggerfall Tools For Unity
+// Project:         Daggerfall Tools For Unity
 // Copyright:       Copyright (C) 2009-2016 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
-// Original Author: Gavin Clayton (interkarma@dfworkshop.net)
-// Contributors:    Yannick Comte (comte.yannick@gmail.com)
+// Original Author: Yannick Comte (comte.yannick@gmail.com)
+// Contributors:
 // 
 // Notes:
 //
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
-using UnityEngine.VR;
+using UnityEngine.XR;
 
 public class OnGUIVR : MonoBehaviour
 {
@@ -24,7 +24,7 @@ public class OnGUIVR : MonoBehaviour
 
     void Start()
     {
-        vrEnabled = VRSettings.enabled;
+        vrEnabled = XRSettings.enabled;
 
         if (vrEnabled)
         {

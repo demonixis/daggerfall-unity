@@ -11,6 +11,7 @@
 
 using UnityEngine;
 using System.Collections;
+using UnityEngine.XR;
 
 namespace DaggerfallWorkshop.Game
 {
@@ -148,6 +149,9 @@ namespace DaggerfallWorkshop.Game
                     Pitch += -rawMouseDelta.y;
                 }
             }
+
+            if (XRSettings.enabled)
+                Pitch = 0;
 
             // If there's a character body that acts as a parent to the camera
             if (characterBody)
