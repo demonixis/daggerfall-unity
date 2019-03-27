@@ -367,6 +367,8 @@ namespace DaggerfallWorkshop.Game
 
         void OnGUI()
         {
+            OnGUIVR.Begin();
+
             // Set depth of GUI to appear on top of other elements
             GUI.depth = 0;
 

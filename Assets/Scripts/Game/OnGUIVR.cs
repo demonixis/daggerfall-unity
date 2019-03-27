@@ -29,18 +29,18 @@ public class OnGUIVR : MonoBehaviour
         if (vrEnabled)
         {
             var camera = Camera.main;
-            var width = 1024;
-            var height = 600;
+            var width = 1280;
+            var height = 1024;
 
-            renderTexture = new RenderTexture(width, height, 24, RenderTextureFormat.Default);
+            renderTexture = new RenderTexture(width, height, 24, RenderTextureFormat.Default, RenderTextureReadWrite.Default);
             renderTexture.Create();
 
             var canvasGO = new GameObject("VRCanvas");
             var canvasTransform = canvasGO.AddComponent<RectTransform>();
-            canvasTransform.SetParent(camera.transform);
+            canvasTransform.SetParent(camera.transform.parent);
             canvasTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, width);
             canvasTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, height);
-            canvasTransform.localPosition = new Vector3(0.0f, 0.0f, 1.0f);
+            canvasTransform.localPosition = new Vector3(0.0f, 0.5f, 1.0f);
             canvasTransform.localRotation = Quaternion.identity;
             canvasTransform.localScale = new Vector3(0.001f, 0.001f, 0.001f);
 
@@ -66,19 +66,26 @@ public class OnGUIVR : MonoBehaviour
 
     void OnGUI()
     {
-        Begin();
-        GUI.DrawTexture(new Rect(Event.current.mousePosition.x, Event.current.mousePosition.y, _cursor.width, _cursor.height), _cursor);
-        End();
+        if (Event.current.type == EventType.Repaint)
+        {
+            GUI.depth = 100;
+            Begin();
+            var rect = new Rect(Event.current.mousePosition.x, Event.current.mousePosition.y, _cursor.width, _cursor.height);
+            GUI.DrawTexture(rect, _cursor);
+            End();
+        }
     }
 
     private IEnumerator ClearRenderTexture()
     {
-        while(true)
+        var endOfFrame = new WaitForFixedUpdate();
+
+        while (true)
         {
+            yield return endOfFrame;
             RenderTexture.active = renderTexture;
-            //GL.Clear(true, true, new Color(1, 1, 1, 0));
+            GL.Clear(true, true, new Color(1, 1, 1, 0));
             RenderTexture.active = null;
-            yield return new WaitForEndOfFrame();
         }
     }
 

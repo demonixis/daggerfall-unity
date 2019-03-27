@@ -1,4 +1,4 @@
-﻿// Project:         Daggerfall Tools For Unity
+// Project:         Daggerfall Tools For Unity
 // Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
@@ -83,6 +83,8 @@ namespace DaggerfallWorkshop.Game
 
         void OnGUI()
         {
+            OnGUIVR.Begin();
+
             //// TEMP: Cycle through playing different spell types for testing
             //if (currentFrame == -1)
             //{
@@ -128,6 +130,8 @@ namespace DaggerfallWorkshop.Game
                 GUI.DrawTextureWithTexCoords(leftHandPosition, currentAnims[frameIndex].Texture, leftHandAnimRect);
                 GUI.DrawTextureWithTexCoords(rightHandPosition, currentAnims[frameIndex].Texture, rightHandAnimRect);
             }
+
+            OnGUIVR.End();
         }
 
         #endregion

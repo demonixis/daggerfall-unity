@@ -9,6 +9,8 @@
 // Notes:
 //
 
+using DaggerfallWorkshop.Game.Serialization;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.XR;
 
@@ -21,25 +23,35 @@ namespace DaggerfallWorkshop.Game
             get { return XRSettings.enabled; }
         }
 
-        void Start()
+        private IEnumerator Start()
         {
             if (XRSettings.enabled)
             {
                 var camera = Camera.main;
                 camera.fieldOfView = 90.0f;
-                camera.clearFlags = CameraClearFlags.SolidColor;
+                camera.clearFlags = CameraClearFlags.Skybox;
 
                 XRDevice.SetTrackingSpaceType(TrackingSpaceType.Stationary);
+
+                yield return new WaitForEndOfFrame();
+
                 InputTracking.Recenter();
             }
             else
                 Destroy(this);
         }
 
-        void Update()
+        private void Update()
         {
             if (Input.GetKeyDown(KeyCode.Backspace))
                 InputTracking.Recenter();
+
+            if (Input.GetKeyDown(KeyCode.P))
+            {
+                var saveManager = FindObjectOfType<SaveLoadManager>();
+                saveManager.EnumerateSaves();
+                saveManager.QuickLoad();
+            }
         }
     }
 }

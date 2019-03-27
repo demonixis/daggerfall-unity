@@ -96,7 +96,10 @@ namespace DaggerfallWorkshop.Game
             {
                 LoadWeaponAtlas();
                 if (weaponAtlas == null)
+                {
+                    OnGUIVR.End();
                     return;
+                }
             }
             UpdateWeapon();
 
@@ -118,28 +121,28 @@ namespace DaggerfallWorkshop.Game
             if (WeaponType == WeaponTypes.Bow)
                 state = WeaponStates.StrikeDown;
             else switch (direction)
-            {
-                case WeaponManager.MouseDirections.Down:
-                    state = WeaponStates.StrikeDown;
-                    break;
-                case WeaponManager.MouseDirections.DownLeft:
-                    state = WeaponStates.StrikeDownLeft;
-                    break;
-                case WeaponManager.MouseDirections.Left:
-                    state = WeaponStates.StrikeLeft;
-                    break;
-                case WeaponManager.MouseDirections.Right:
-                    state = WeaponStates.StrikeRight;
-                    break;
-                case WeaponManager.MouseDirections.DownRight:
-                    state = WeaponStates.StrikeDownRight;
-                    break;
-                case WeaponManager.MouseDirections.Up:
-                    state = WeaponStates.StrikeUp;
-                    break;
-                default:
-                    return;
-            }
+                {
+                    case WeaponManager.MouseDirections.Down:
+                        state = WeaponStates.StrikeDown;
+                        break;
+                    case WeaponManager.MouseDirections.DownLeft:
+                        state = WeaponStates.StrikeDownLeft;
+                        break;
+                    case WeaponManager.MouseDirections.Left:
+                        state = WeaponStates.StrikeLeft;
+                        break;
+                    case WeaponManager.MouseDirections.Right:
+                        state = WeaponStates.StrikeRight;
+                        break;
+                    case WeaponManager.MouseDirections.DownRight:
+                        state = WeaponStates.StrikeDownRight;
+                        break;
+                    case WeaponManager.MouseDirections.Up:
+                        state = WeaponStates.StrikeUp;
+                        break;
+                    default:
+                        return;
+                }
 
             // Do not change if already playing attack animation
             if (!IsPlayingOneShot())

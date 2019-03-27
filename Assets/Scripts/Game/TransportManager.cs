@@ -174,6 +174,7 @@ namespace DaggerfallWorkshop.Game
             {
                 if ((mode == TransportModes.Horse || mode == TransportModes.Cart) && ridingTexure.texture != null)
                 {
+                    OnGUIVR.Begin();
                     // Draw horse texture behind other HUD elements & weapons.
                     GUI.depth = 2;
                     // Get horse texture scaling factor. (only use height to avoid aspect ratio issues like fat horses)
@@ -185,6 +186,7 @@ namespace DaggerfallWorkshop.Game
                                     ridingTexure.width * horseScaleY,
                                     ridingTexure.height * horseScaleY);
                     GUI.DrawTexture(pos, ridingTexure.texture);
+                    OnGUIVR.End();
                 }
             }
         }

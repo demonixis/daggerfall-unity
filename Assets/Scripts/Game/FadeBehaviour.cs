@@ -1,4 +1,4 @@
-﻿// Project:         Daggerfall Tools For Unity
+// Project:         Daggerfall Tools For Unity
 // Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
@@ -48,7 +48,9 @@ namespace DaggerfallWorkshop.Game
 
         private void OnGUI()
         {
+            OnGUIVR.Begin();
             TickFade();
+            OnGUIVR.End();
         }
 
         public void SmashHUDToBlack()

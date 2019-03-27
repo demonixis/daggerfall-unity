@@ -1,4 +1,4 @@
-﻿// Project:         Daggerfall Tools For Unity
+// Project:         Daggerfall Tools For Unity
 // Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
@@ -69,10 +69,8 @@ namespace DaggerfallWorkshop.Game
         {
             if (ShowTitle && TitleScreenTexture)
             {
-                OnGUIVR.Begin();
                 GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), blackTexture, ScaleMode.StretchToFill);
                 GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), TitleScreenTexture, ScaleMode.ScaleToFit, false, 1.6f);
-                OnGUIVR.End();
             }
         }
 
