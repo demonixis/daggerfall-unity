@@ -83,13 +83,16 @@ namespace DaggerfallWorkshop.Game
 
         void OnGUI()
         {
+            OnGUIVR.Begin();
+
             GUI.depth = 1;
 
             // Must be ready
             if (!ReadyCheck() || WeaponType == WeaponTypes.None || GameManager.IsGamePaused)
+            {
+                OnGUIVR.End();
                 return;
-
-            OnGUIVR.Begin();
+            }
 
             // Must have current weapon texture atlas
             if (weaponAtlas == null || WeaponType != currentWeaponType || MetalType != currentMetalType)

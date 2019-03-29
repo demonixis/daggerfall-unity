@@ -16,24 +16,29 @@ using UnityEngine.XR;
 public class OnGUIVR : MonoBehaviour
 {
     private static OnGUIVR instance;
-    private RenderTexture renderTexture;
+    private RenderTexture m_VRRenderTexture;
     private bool vrEnabled;
 
     [SerializeField]
     private Texture2D _cursor = null;
 
-    void Start()
+    private void Awake()
+    {
+        instance = this;
+    }
+
+    private void Start()
     {
         vrEnabled = XRSettings.enabled;
 
         if (vrEnabled)
         {
             var camera = Camera.main;
-            var width = 1280;
-            var height = 1024;
+            var width = Screen.width;
+            var height = Screen.height;
 
-            renderTexture = new RenderTexture(width, height, 24, RenderTextureFormat.Default, RenderTextureReadWrite.Default);
-            renderTexture.Create();
+            m_VRRenderTexture = new RenderTexture(width, height, 24, RenderTextureFormat.Default, RenderTextureReadWrite.Default);
+            m_VRRenderTexture.Create();
 
             var canvasGO = new GameObject("VRCanvas");
             var canvasTransform = canvasGO.AddComponent<RectTransform>();
@@ -56,24 +61,23 @@ public class OnGUIVR : MonoBehaviour
             rectTransform.localPosition = Vector3.zero;
 
             var rawImage = rawImageGO.AddComponent<RawImage>();
-            rawImage.texture = renderTexture;
+            rawImage.texture = m_VRRenderTexture;
 
             StartCoroutine(ClearRenderTexture());
         }
-
-        instance = this;
     }
 
     void OnGUI()
     {
-        if (Event.current.type == EventType.Repaint)
-        {
-            GUI.depth = 100;
-            Begin();
-            var rect = new Rect(Event.current.mousePosition.x, Event.current.mousePosition.y, _cursor.width, _cursor.height);
-            GUI.DrawTexture(rect, _cursor);
-            End();
-        }
+        var prev = RenderTexture.active;
+
+        RenderTexture.active = m_VRRenderTexture;
+
+        GUI.depth = -100;
+        var rect = new Rect(Event.current.mousePosition.x, Event.current.mousePosition.y, _cursor.width, _cursor.height);
+        GUI.DrawTexture(rect, _cursor);
+
+        RenderTexture.active = prev;
     }
 
     private IEnumerator ClearRenderTexture()
@@ -83,16 +87,17 @@ public class OnGUIVR : MonoBehaviour
         while (true)
         {
             yield return endOfFrame;
-            RenderTexture.active = renderTexture;
+            var prev = RenderTexture.active;
+            RenderTexture.active = m_VRRenderTexture;
             GL.Clear(true, true, new Color(1, 1, 1, 0));
-            RenderTexture.active = null;
+            RenderTexture.active = prev;
         }
     }
 
     public static void Begin()
     {
         if (instance != null && instance.vrEnabled)
-            RenderTexture.active = instance.renderTexture;
+            RenderTexture.active = instance.m_VRRenderTexture;
     }
 
     public static void End()
