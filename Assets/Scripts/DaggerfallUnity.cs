@@ -312,6 +312,10 @@ namespace DaggerfallWorkshop
 
         private void SetupArena2Path()
         {
+#if UNITY_ANDROID
+            Arena2Path = "/sdcard/DaggerfallUnity/Arena2/";
+#endif
+
             // Clear path validated flag
             isPathValidated = false;
 

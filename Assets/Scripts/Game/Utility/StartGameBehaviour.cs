@@ -192,9 +192,15 @@ namespace DaggerfallWorkshop.Game.Utility
                 if (mouseLook)
                     mouseLook.sensitivityScale = DaggerfallUnity.Settings.MouseLookSensitivity;
 
+#if UNITY_ANDROID
+                camera.renderingPath = RenderingPath.Forward;
+#else
                 // Set rendering path
                 if (DaggerfallUnity.Settings.UseLegacyDeferred)
                     camera.renderingPath = RenderingPath.DeferredLighting;
+                else
+                    camera.renderingPath = RenderingPath.DeferredShading;
+#endif
             }
 
             // Shadow Resoltion Mode
@@ -252,9 +258,9 @@ namespace DaggerfallWorkshop.Game.Utility
             GameManager.Instance.StreamingWorld.TerrainDistance = DaggerfallUnity.Settings.TerrainDistance;
         }
 
-        #endregion
+#endregion
 
-        #region Startup Methods
+#region Startup Methods
 
         void StartVoid()
         {
@@ -432,9 +438,9 @@ namespace DaggerfallWorkshop.Game.Utility
                 OnStartGame(this, null);
         }
 
-        #endregion
+#endregion
 
-        #region Daggerfall Unity Save Startup
+#region Daggerfall Unity Save Startup
 
         void LoadDaggerfallUnitySave()
         {
@@ -445,9 +451,9 @@ namespace DaggerfallWorkshop.Game.Utility
             SaveLoadManager.Instance.Load(SaveIndex);
         }
 
-        #endregion
+#endregion
 
-        #region Classic Save Startup
+#region Classic Save Startup
 
         void StartFromClassicSave()
         {
@@ -685,9 +691,9 @@ namespace DaggerfallWorkshop.Game.Utility
             }
         }
 
-        #endregion
+#endregion
 
-        #region Utility
+#region Utility
 
         StreamingWorld FindStreamingWorld()
         {
@@ -791,9 +797,9 @@ namespace DaggerfallWorkshop.Game.Utility
             }
         }
 
-        #endregion
+#endregion
 
-        #region Event Handlers
+#region Event Handlers
 
         /// <summary>
         /// Launch starting quest on first load.
@@ -809,9 +815,9 @@ namespace DaggerfallWorkshop.Game.Utility
             }
         }
 
-        #endregion
+#endregion
 
-        #region Events
+#region Events
 
         // OnNewGame
         public delegate void OnNewGameEventHandler();
@@ -822,6 +828,6 @@ namespace DaggerfallWorkshop.Game.Utility
                 OnNewGame();
         }
 
-        #endregion
+#endregion
     }
 }
