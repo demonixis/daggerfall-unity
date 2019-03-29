@@ -1,4 +1,4 @@
-﻿using System.CodeDom.Compiler;
+using System.CodeDom.Compiler;
 using Mono.CSharp;
 
 namespace CSharpCompiler

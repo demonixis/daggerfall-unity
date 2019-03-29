@@ -191,7 +191,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
         /// </summary>
         public Tuple<int, int> GetIntTuple(int row = 0)
         {
-            return Tuple<int, int>.Make(GetIntValue(row, 0), GetIntValue(row, 1));
+            return Tuple.Create(GetIntValue(row, 0), GetIntValue(row, 1));
         }
 
         /// <summary>
@@ -223,7 +223,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
         /// </summary>
         public Tuple<float, float> GetFloatTuple(int row = 0)
         {
-            return Tuple<float, float>.Make(GetFloatValue(row, 0), GetFloatValue(row, 1));
+            return Tuple.Create(GetFloatValue(row, 0), GetFloatValue(row, 1));
         }
 
         #endregion

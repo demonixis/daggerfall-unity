@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace DaggerfallWorkshop.Utility
 {
@@ -8,20 +8,20 @@ namespace DaggerfallWorkshop.Utility
     /// <typeparam name="T1">First/left type</typeparam>
     /// <typeparam name="T2">Second/right type</typeparam>
     [Serializable]
-    public class Tuple<T1, T2>
+    public class Tuple2<T1, T2>
     {
         public T1 First;
         public T2 Second;
 
-        public Tuple(T1 a, T2 b)
+        public Tuple2(T1 a, T2 b)
         {
             First = a;
             Second = b;
         }
 
-        public static Tuple<T1, T2> Make(T1 a, T2 b)
+        public static Tuple2<T1, T2> Make(T1 a, T2 b)
         {
-            return new Tuple<T1, T2>(a, b);
+            return new Tuple2<T1, T2>(a, b);
         }
 
         public override string ToString()

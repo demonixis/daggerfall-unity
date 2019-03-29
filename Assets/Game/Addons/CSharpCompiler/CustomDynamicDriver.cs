@@ -1,4 +1,4 @@
-﻿// modified version of Mono.CSharp.Driver
+// modified version of Mono.CSharp.Driver
 
 // driver.cs: The compiler command line driver.
 //
